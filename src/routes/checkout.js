@@ -1,0 +1,1 @@
+﻿import { Router } from "express"; const r=Router(); r.post("/create-session",async(req,res)=>{ const {mode}=req.body||{}; const url = mode==="deposit" ? "https://example.com/stripe/deposit" : "https://example.com/stripe/paynow"; res.json({ url, sessionId:"sess_dummy_123" }); }); export default r;

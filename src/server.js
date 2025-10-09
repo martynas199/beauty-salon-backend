@@ -1,0 +1,21 @@
+﻿import dotenv from "dotenv"; dotenv.config();
+import express from "express"; import cors from "cors"; import helmet from "helmet"; import morgan from "morgan"; import mongoose from "mongoose";
+import servicesRouter from "./routes/services.js";
+import beauticiansRouter from "./routes/beauticians.js";
+import slotsRouter from "./routes/slots.js";
+import checkoutRouter from "./routes/checkout.js";
+import appointmentsRouter from "./routes/appointments.js";
+import webhooksRouter from "./routes/webhooks.js";
+const app = express();
+app.use(helmet()); app.use(cors()); app.use(express.json()); app.use(morgan("dev"));
+const PORT = process.env.PORT || 4000; const MONGO_URI = process.env.MONGO_URI; if (!MONGO_URI) { console.error("MONGO_URI missing"); process.exit(1); }
+await mongoose.connect(MONGO_URI);
+app.get("/health", (req,res)=> res.json({ ok:true }));
+app.use("/api/services", servicesRouter);
+app.use("/api/beauticians", beauticiansRouter);
+app.use("/api/slots", slotsRouter);
+app.use("/api/checkout", checkoutRouter);
+app.use("/api/appointments", appointmentsRouter);
+app.use("/api/webhooks", webhooksRouter);
+app.use((err,req,res,next)=>{ console.error(err); res.status(400).json({ error: err.message || "Unknown error" }); });
+app.listen(PORT, ()=>console.log(`API listening on :${PORT}`));
