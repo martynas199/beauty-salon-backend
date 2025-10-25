@@ -222,6 +222,7 @@ r.post("/:id/cancel", async (req, res) => {
         policySnapshot: policy,
         refundAmount: outcome.refundAmount,
         outcomeStatus: newStatus,
+        reason: body.reason,
       });
     } catch (e) {
       console.error("email_err", e.message);

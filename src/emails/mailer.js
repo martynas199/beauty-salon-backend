@@ -17,39 +17,117 @@ function getTransport() {
 }
 
 /**
- * Send simple cancellation emails to customer and beautician. No-op if SMTP not configured.
+ * Send cancellation emails to customer and beautician. No-op if SMTP not configured.
  */
 export async function sendCancellationEmails({
   appointment,
   policySnapshot,
   refundAmount,
   outcomeStatus,
+  reason,
 }) {
   const tx = getTransport();
   if (!tx) return;
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
   const salonTz = process.env.SALON_TZ || "Europe/London";
-  const when = new Date(appointment.start).toLocaleString("en-GB", {
+
+  const startDate = new Date(appointment.start).toLocaleString("en-GB", {
     timeZone: salonTz,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
-  const ref = String(appointment._id);
-  const refundText =
-    refundAmount > 0
-      ? `Refund: ${(refundAmount / 100).toFixed(2)} ${
-          policySnapshot?.currency || "GBP"
-        }`
-      : `No refund due.`;
-  const outcome = outcomeStatus.replace(/_/g, " ");
+
+  const serviceName =
+    appointment.serviceId?.name || appointment.variantName || "Service";
+  const currency = policySnapshot?.currency?.toUpperCase() || "GBP";
+  const hasRefund = refundAmount && refundAmount > 0;
+  const refundAmountFormatted = hasRefund
+    ? `£${(refundAmount / 100).toFixed(2)}`
+    : null;
 
   const cust = appointment.client?.email;
   if (cust) {
+    // Build email content conditionally
+    let textContent = `Hi ${appointment.client?.name || ""},\n\n`;
+    textContent += `Your appointment has been cancelled.\n\n`;
+    textContent += `Appointment Details:\n`;
+    textContent += `- Service: ${serviceName}\n`;
+    textContent += `- Date & Time: ${startDate}\n`;
+
+    if (reason && reason.trim()) {
+      textContent += `- Reason: ${reason}\n`;
+    }
+
+    textContent += `\n`;
+
+    if (hasRefund) {
+      textContent += `A refund of ${refundAmountFormatted} has been processed to your original payment method.\n`;
+      textContent += `Please allow 5-10 business days for the refund to appear in your account, depending on your bank.\n\n`;
+    } else {
+      textContent += `No refund is applicable for this cancellation.\n\n`;
+    }
+
+    textContent += `If you have any questions, please don't hesitate to contact us.\n\n`;
+    textContent += `We hope to see you again soon!\n\n`;
+    textContent += `Best regards,\nBeauty Salon Team`;
+
+    // HTML version
+    let htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #ef4444; border-bottom: 2px solid #ef4444; padding-bottom: 10px;">Appointment Cancelled</h2>
+        <p>Hi ${appointment.client?.name || ""},</p>
+        <p>Your appointment has been cancelled.</p>
+        
+        <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ef4444;">
+          <h3 style="margin-top: 0; color: #1f2937;">Appointment Details</h3>
+          <p style="margin: 8px 0;"><strong>Service:</strong> ${serviceName}</p>
+          <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startDate}</p>
+          ${
+            reason && reason.trim()
+              ? `<p style="margin: 8px 0;"><strong>Reason:</strong> ${reason}</p>`
+              : ""
+          }
+        </div>
+        
+        ${
+          hasRefund
+            ? `
+        <div style="background-color: #ecfdf5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
+          <p style="margin: 0; color: #065f46;"><strong>💰 Refund Information</strong></p>
+          <p style="margin: 10px 0 0 0; color: #047857;">A refund of <strong>${refundAmountFormatted}</strong> has been processed to your original payment method.</p>
+          <p style="margin: 10px 0 0 0; font-size: 13px; color: #059669;">Please allow 5-10 business days for the refund to appear in your account, depending on your bank.</p>
+        </div>
+        `
+            : `
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; color: #92400e;">No refund is applicable for this cancellation.</p>
+        </div>
+        `
+        }
+        
+        <p style="margin-top: 30px;">If you have any questions, please don't hesitate to contact us.</p>
+        <p>We hope to see you again soon!</p>
+        
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #6b7280; font-size: 14px;">Best regards,</p>
+          <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Beauty Salon Team</p>
+          <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px;">Appointment ID: ${String(
+            appointment._id
+          )}</p>
+        </div>
+      </div>
+    `;
+
     await tx.sendMail({
       from,
       to: cust,
-      subject: `Your appointment ${ref} has been cancelled`,
-      text: `Hi ${
-        appointment.client?.name || ""
-      },\n\nYour appointment on ${when} was cancelled.\nOutcome: ${outcome}. ${refundText}.\nBanks can take a few days to process refunds.\n\nThanks`,
+      subject: `Appointment Cancelled - ${serviceName}`,
+      text: textContent,
+      html: htmlContent,
     });
   }
   const beauticianEmail = process.env.BEAUTICIAN_NOTIFY_EMAIL; // optional
