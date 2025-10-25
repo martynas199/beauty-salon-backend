@@ -130,15 +130,64 @@ export async function sendCancellationEmails({
       html: htmlContent,
     });
   }
-  const beauticianEmail = process.env.BEAUTICIAN_NOTIFY_EMAIL; // optional
+
+  // Optional: Send notification to beautician/salon staff
+  const beauticianEmail = process.env.BEAUTICIAN_NOTIFY_EMAIL;
   if (beauticianEmail) {
+    const beauticianName = appointment.beauticianId?.name || "Staff";
+
     await tx.sendMail({
       from,
       to: beauticianEmail,
-      subject: `Slot freed: appointment ${ref} cancelled`,
-      text: `Appointment ${ref} for ${when} cancelled. Client: ${
-        appointment.client?.name || ""
-      } ${appointment.client?.email || ""}.`,
+      subject: `Appointment Cancelled - ${serviceName}`,
+      text: `A slot has been freed up.\n\nAppointment Details:\n- Service: ${serviceName}\n- Date & Time: ${startDate}\n- Beautician: ${beauticianName}\n- Client: ${
+        appointment.client?.name || "Unknown"
+      }\n- Client Email: ${
+        appointment.client?.email || "N/A"
+      }\n- Client Phone: ${appointment.client?.phone || "N/A"}\n${
+        reason && reason.trim() ? `- Cancellation Reason: ${reason}\n` : ""
+      }${
+        hasRefund ? `- Refund: ${refundAmountFormatted}` : "- Refund: None"
+      }\n\nAppointment ID: ${String(appointment._id)}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #f59e0b; border-bottom: 2px solid #f59e0b; padding-bottom: 10px;">📅 Appointment Cancelled - Slot Freed</h2>
+          
+          <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #1f2937;">Appointment Details</h3>
+            <p style="margin: 8px 0;"><strong>Service:</strong> ${serviceName}</p>
+            <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startDate}</p>
+            <p style="margin: 8px 0;"><strong>Beautician:</strong> ${beauticianName}</p>
+            ${
+              reason && reason.trim()
+                ? `<p style="margin: 8px 0;"><strong>Reason:</strong> ${reason}</p>`
+                : ""
+            }
+            ${
+              hasRefund
+                ? `<p style="margin: 8px 0;"><strong>Refund:</strong> ${refundAmountFormatted}</p>`
+                : '<p style="margin: 8px 0;"><strong>Refund:</strong> None</p>'
+            }
+          </div>
+          
+          <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+            <h4 style="margin-top: 0; color: #1e40af;">Client Information</h4>
+            <p style="margin: 5px 0;"><strong>Name:</strong> ${
+              appointment.client?.name || "Unknown"
+            }</p>
+            <p style="margin: 5px 0;"><strong>Email:</strong> ${
+              appointment.client?.email || "N/A"
+            }</p>
+            <p style="margin: 5px 0;"><strong>Phone:</strong> ${
+              appointment.client?.phone || "N/A"
+            }</p>
+          </div>
+          
+          <p style="color: #9ca3af; font-size: 11px; margin-top: 30px;">Appointment ID: ${String(
+            appointment._id
+          )}</p>
+        </div>
+      `,
     });
   }
 }
