@@ -1,12 +1,14 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import Appointment from "../models/Appointment.js";
+import Beautician from "../models/Beautician.js";
+import Order from "../models/Order.js";
 
 const r = Router();
 let stripeInstance = null;
 function getStripe() {
   if (!stripeInstance) {
-    const key = process.env.STRIPE_SECRET;
+    const key = process.env.STRIPE_SECRET || process.env.STRIPE_SECRET_KEY;
     if (!key) throw new Error("STRIPE_SECRET not configured");
     stripeInstance = new Stripe(key, { apiVersion: "2024-06-20" });
   }
@@ -117,32 +119,157 @@ r.post("/stripe", async (req, res) => {
         }
         break;
       }
-      default:
-        if (
-          event.type === "charge.refunded" ||
-          event.type === "refund.updated"
-        ) {
-          // Best-effort reconciliation: mark payment status if we have appointmentId on metadata
+      case "charge.refunded": {
+        const charge = event.data.object;
+        const apptId = charge.metadata?.appointmentId;
+        const orderId = charge.metadata?.orderId;
+
+        console.log(
+          "[WEBHOOK] charge.refunded - apptId:",
+          apptId,
+          "orderId:",
+          orderId
+        );
+
+        if (apptId) {
           try {
-            const obj = event.data.object;
-            const apptId = obj.metadata?.appointmentId;
-            if (apptId) {
-              await Appointment.findByIdAndUpdate(apptId, {
-                $set: { "payment.status": "refunded" },
-                $push: {
-                  audit: {
-                    at: new Date(),
-                    action: "stripe_refund_webhook",
-                    meta: { eventId: event.id },
-                  },
+            await Appointment.findByIdAndUpdate(apptId, {
+              $set: { "payment.status": "refunded" },
+              $push: {
+                audit: {
+                  at: new Date(),
+                  action: "stripe_refund_webhook",
+                  meta: { eventId: event.id },
                 },
-              });
-            }
+              },
+            });
+            console.log("[WEBHOOK] Appointment", apptId, "marked as refunded");
           } catch (e) {
-            console.error("webhook reconcile err", e);
+            console.error("[WEBHOOK] refund update err", e);
           }
         }
-        // ignore other event types for now
+
+        if (orderId) {
+          try {
+            await Order.findByIdAndUpdate(orderId, {
+              $set: {
+                paymentStatus: "refunded",
+                refundStatus: "full",
+                refundedAt: new Date(),
+              },
+            });
+            console.log("[WEBHOOK] Order", orderId, "marked as refunded");
+          } catch (e) {
+            console.error("[WEBHOOK] order refund update err", e);
+          }
+        }
+        break;
+      }
+
+      case "account.updated": {
+        // Stripe Connect account status changed
+        const account = event.data.object;
+        console.log("[WEBHOOK] account.updated - account:", account.id);
+
+        try {
+          const beautician = await Beautician.findOne({
+            stripeAccountId: account.id,
+          });
+          if (beautician) {
+            const isComplete =
+              account.details_submitted && account.charges_enabled;
+            beautician.stripeStatus = isComplete ? "connected" : "pending";
+            beautician.stripeOnboardingCompleted = isComplete;
+            await beautician.save();
+            console.log(
+              "[WEBHOOK] Beautician",
+              beautician._id,
+              "status updated to",
+              beautician.stripeStatus
+            );
+          }
+        } catch (e) {
+          console.error("[WEBHOOK] account update err", e);
+        }
+        break;
+      }
+
+      case "payout.paid": {
+        // Payout successfully sent to beautician's bank
+        const payout = event.data.object;
+        console.log(
+          "[WEBHOOK] payout.paid - amount:",
+          payout.amount,
+          "account:",
+          event.account
+        );
+
+        try {
+          const beautician = await Beautician.findOne({
+            stripeAccountId: event.account,
+          });
+          if (beautician) {
+            beautician.totalPayouts += payout.amount / 100; // Convert from pence to pounds
+            beautician.lastPayoutDate = new Date(payout.arrival_date * 1000);
+            await beautician.save();
+            console.log(
+              "[WEBHOOK] Beautician",
+              beautician._id,
+              "payout recorded"
+            );
+          }
+        } catch (e) {
+          console.error("[WEBHOOK] payout update err", e);
+        }
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const pi = event.data.object;
+        const apptId = pi.metadata?.appointmentId;
+        const orderId = pi.metadata?.orderId;
+
+        console.log(
+          "[WEBHOOK] payment_intent.payment_failed - apptId:",
+          apptId,
+          "orderId:",
+          orderId
+        );
+
+        if (apptId) {
+          try {
+            await Appointment.findByIdAndUpdate(apptId, {
+              $set: { "payment.status": "unpaid", status: "reserved_unpaid" },
+              $push: {
+                audit: {
+                  at: new Date(),
+                  action: "payment_failed",
+                  meta: {
+                    eventId: event.id,
+                    error: pi.last_payment_error?.message,
+                  },
+                },
+              },
+            });
+          } catch (e) {
+            console.error("[WEBHOOK] payment failed update err", e);
+          }
+        }
+
+        if (orderId) {
+          try {
+            await Order.findByIdAndUpdate(orderId, {
+              $set: { paymentStatus: "failed" },
+            });
+          } catch (e) {
+            console.error("[WEBHOOK] order payment failed update err", e);
+          }
+        }
+        break;
+      }
+
+      default:
+        console.log("[WEBHOOK] Unhandled event type:", event.type);
         break;
     }
   } catch (e) {

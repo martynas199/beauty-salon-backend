@@ -62,6 +62,18 @@ const BeauticianSchema = new mongoose.Schema(
       width: Number,
       height: Number,
     },
+
+    // Stripe Connect fields
+    stripeAccountId: { type: String, index: true },
+    stripeStatus: {
+      type: String,
+      enum: ["not_connected", "pending", "connected", "rejected"],
+      default: "not_connected",
+    },
+    stripeOnboardingCompleted: { type: Boolean, default: false },
+    totalEarnings: { type: Number, default: 0 }, // Total revenue from bookings + products
+    totalPayouts: { type: Number, default: 0 }, // Total amount paid out by Stripe
+    lastPayoutDate: Date,
   },
   { timestamps: true }
 );

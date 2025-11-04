@@ -1,10 +1,13 @@
-﻿import dotenv from "dotenv";
-dotenv.config();
+﻿// Load environment variables first (must be before all other imports)
+import "./config/env.js";
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
+import passport from "./config/passport.js";
 import servicesRouter from "./routes/services.js";
 import beauticiansRouter from "./routes/beauticians.js";
 import slotsRouter from "./routes/slots.js";
@@ -14,10 +17,62 @@ import webhooksRouter from "./routes/webhooks.js";
 import salonRouter from "./routes/salon.js";
 import settingsRouter from "./routes/settings.js";
 import revenueRouter from "./routes/revenue.js";
+import authRouter from "./routes/auth.js";
+import userAuthRouter from "./routes/userAuth.js";
+import usersRouter from "./routes/users.js";
+import oauthRouter from "./routes/oauth.js";
+import timeoffRouter from "./routes/timeoff.js";
+import heroSectionsRouter from "./routes/heroSections.js";
+import productsRouter from "./routes/products.js";
+import ordersRouter from "./routes/orders.js";
+import connectRouter from "./routes/connect.js";
+import reportsRouter from "./routes/reports.js";
+import adminsRouter from "./routes/admins.js";
+import {
+  apiLimiter,
+  authLimiter,
+  registerLimiter,
+  bookingLimiter,
+  readLimiter,
+} from "./middleware/rateLimiter.js";
+
 const app = express();
+
+// Security: Helmet for security headers
 app.use(helmet());
-app.use(cors());
+
+// Security: CORS configuration
+const allowedOrigins = [
+  "http://localhost:5173", // Vite dev server (default)
+  "http://localhost:5174", // Vite dev server (alternative port)
+  "http://localhost:3000", // Alternative dev port
+  process.env.FRONTEND_URL, // Production frontend URL from env
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`Blocked CORS request from origin: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // Allow cookies to be sent
+    optionsSuccessStatus: 200,
+  })
+);
+
+// Logging
 app.use(morgan("dev"));
+
+// Cookie parser (for JWT in cookies)
+app.use(cookieParser());
+
 const PORT = process.env.PORT || 4000;
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
@@ -25,25 +80,77 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 await mongoose.connect(MONGO_URI);
+
+// Health check (no rate limit)
 app.get("/health", (req, res) => res.json({ ok: true }));
+
 // Webhooks: use raw body for Stripe signature verification BEFORE json parser
 app.use(
   "/api/webhooks",
   express.raw({ type: "application/json" }),
   webhooksRouter
 );
+
 // JSON parser for the rest of the API
 app.use(express.json());
-app.use("/api/services", servicesRouter);
-app.use("/api/beauticians", beauticiansRouter);
-app.use("/api/slots", slotsRouter);
-app.use("/api/checkout", checkoutRouter);
+
+// Initialize Passport for OAuth
+app.use(passport.initialize());
+
+// Authentication routes with stricter rate limiting (BEFORE general limiter)
+// Admin auth
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", registerLimiter);
+app.use("/api/auth", authRouter);
+
+// Customer auth
+app.use("/api/user-auth/login", authLimiter);
+app.use("/api/user-auth/register", registerLimiter);
+app.use("/api/user-auth", userAuthRouter);
+
+// OAuth routes (Google, Apple login)
+app.use("/api/auth", oauthRouter);
+
+// Public READ-ONLY routes with lenient rate limiting (BEFORE general limiter)
+app.use("/api/services", readLimiter, servicesRouter);
+app.use("/api/beauticians", readLimiter, beauticiansRouter);
+app.use("/api/slots", readLimiter, slotsRouter);
+app.use("/api/salon", readLimiter, salonRouter);
+app.use("/api/hero-sections", readLimiter, heroSectionsRouter);
+app.use("/api/products", readLimiter, productsRouter);
+
+// Customer profile routes (protected)
+app.use("/api/users", usersRouter);
+
+// Orders (includes both read and write operations)
+app.use("/api/orders", ordersRouter);
+
+// Apply general rate limiting to remaining API routes
+app.use("/api", apiLimiter);
+
+// Booking with rate limiting to prevent spam
+app.use("/api/checkout", bookingLimiter, checkoutRouter);
+
+// Protected admin routes (authentication required)
 app.use("/api/appointments", appointmentsRouter);
-app.use("/api/salon", salonRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/revenue", revenueRouter);
+app.use("/api/timeoff", timeoffRouter);
+app.use("/api/connect", connectRouter); // Stripe Connect routes
+app.use("/api/reports", reportsRouter); // Revenue and earnings reports
+app.use("/api/admin/admins", adminsRouter); // Admin management routes
+
+// Error handling
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(400).json({ error: err.message || "Unknown error" });
 });
-app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`🚀 API listening on :${PORT}`);
+  console.log(`🔒 Security features enabled:`);
+  console.log(`   - Helmet security headers`);
+  console.log(`   - CORS restricted to: ${allowedOrigins.join(", ")}`);
+  console.log(`   - Rate limiting active`);
+  console.log(`   - JWT authentication required for admin routes`);
+});

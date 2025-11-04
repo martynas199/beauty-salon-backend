@@ -6,13 +6,24 @@ import Appointment from "../models/Appointment.js";
 
 const r = Router();
 let stripeInstance = null;
-function getStripe() {
-  if (!stripeInstance) {
-    const key = process.env.STRIPE_SECRET;
-    if (!key) throw new Error("STRIPE_SECRET not configured");
-    stripeInstance = new Stripe(key, { apiVersion: "2024-06-20" });
+function getStripe(connectedAccountId = null) {
+  const key = process.env.STRIPE_SECRET;
+  if (!key) throw new Error("STRIPE_SECRET not configured");
+
+  // If no connected account specified, use cached platform instance
+  if (!connectedAccountId) {
+    if (!stripeInstance) {
+      stripeInstance = new Stripe(key, { apiVersion: "2024-06-20" });
+    }
+    return stripeInstance;
   }
-  return stripeInstance;
+
+  // For connected accounts, create a new client instance
+  // This allows us to make direct charges on the connected account
+  return new Stripe(key, {
+    apiVersion: "2024-06-20",
+    stripeAccount: connectedAccountId,
+  });
 }
 
 function toMinorUnits(amountFloat) {
@@ -22,27 +33,50 @@ function toMinorUnits(amountFloat) {
 
 r.get("/confirm", async (req, res, next) => {
   try {
-    const stripe = getStripe();
     const { session_id } = req.query || {};
     console.log("[CHECKOUT CONFIRM] called with session_id:", session_id);
     if (!session_id)
       return res.status(400).json({ error: "Missing session_id" });
+
+    // Find appointment by session ID to determine which Stripe account to use
+    const appt = await Appointment.findOne({
+      "payment.sessionId": session_id,
+    }).lean();
+
+    if (!appt) {
+      return res
+        .status(404)
+        .json({ error: "Appointment not found for this session" });
+    }
+
+    console.log("[CHECKOUT CONFIRM] Found appointment:", appt._id);
+
+    // Get beautician to determine which Stripe account has the session
+    const beautician = await Beautician.findById(appt.beauticianId).lean();
+
+    // Retrieve session from the correct account
+    let stripe;
+    if (
+      beautician?.stripeAccountId &&
+      beautician?.stripeStatus === "connected"
+    ) {
+      // Direct charge - session is on beautician's account
+      stripe = getStripe(beautician.stripeAccountId);
+      console.log(
+        "[CHECKOUT CONFIRM] Retrieving from beautician account:",
+        beautician.stripeAccountId
+      );
+    } else {
+      // Platform charge - session is on platform account
+      stripe = getStripe();
+      console.log("[CHECKOUT CONFIRM] Retrieving from platform account");
+    }
+
     const session = await stripe.checkout.sessions.retrieve(
       String(session_id),
       { expand: ["payment_intent"] }
     );
-    console.log("[CHECKOUT CONFIRM] Stripe session:", session);
-    const apptId =
-      session.client_reference_id ||
-      session.metadata?.appointmentId ||
-      session.payment_intent?.metadata?.appointmentId;
-    console.log("[CHECKOUT CONFIRM] Resolved apptId:", apptId);
-    if (!apptId)
-      return res.status(404).json({ error: "Appointment not linked" });
-
-    const appt = await Appointment.findById(apptId).lean();
-    console.log("[CHECKOUT CONFIRM] Appointment:", appt);
-    if (!appt) return res.status(404).json({ error: "Appointment not found" });
+    console.log("[CHECKOUT CONFIRM] Stripe session retrieved successfully");
 
     // If already confirmed, exit early
     if (
@@ -71,15 +105,13 @@ r.get("/confirm", async (req, res, next) => {
       session.status
     );
     if (!paid)
-      return res
-        .status(409)
-        .json({
-          error: "Session not paid yet",
-          session: {
-            payment_status: session.payment_status,
-            status: session.status,
-          },
-        });
+      return res.status(409).json({
+        error: "Session not paid yet",
+        session: {
+          payment_status: session.payment_status,
+          status: session.status,
+        },
+      });
 
     const pi = session.payment_intent;
     const amountTotal = Number(
@@ -89,7 +121,37 @@ r.get("/confirm", async (req, res, next) => {
     );
     console.log("[CHECKOUT CONFIRM] amountTotal:", amountTotal);
 
-    await Appointment.findByIdAndUpdate(apptId, {
+    // Platform fee (beautician already loaded above)
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50);
+
+    // Build stripe payment data
+    const stripeData = {
+      ...(appt.payment?.stripe || {}),
+      paymentIntentId:
+        typeof pi === "object" && pi?.id
+          ? pi.id
+          : typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : undefined,
+    };
+
+    // Add Connect data if beautician was connected
+    if (
+      beautician?.stripeAccountId &&
+      beautician?.stripeStatus === "connected"
+    ) {
+      stripeData.platformFee = platformFee;
+      stripeData.beauticianStripeAccount = beautician.stripeAccountId;
+      console.log("[CHECKOUT CONFIRM] Stripe Connect payment tracked");
+
+      // Update beautician's total earnings (amount minus platform fee, converted to pounds)
+      const earningsInPounds = (amountTotal - platformFee) / 100;
+      await Beautician.findByIdAndUpdate(appt.beauticianId, {
+        $inc: { totalEarnings: earningsInPounds },
+      });
+    }
+
+    await Appointment.findByIdAndUpdate(appt._id, {
       $set: {
         status: "confirmed",
         payment: {
@@ -98,15 +160,7 @@ r.get("/confirm", async (req, res, next) => {
           mode: "pay_now",
           status: "succeeded",
           amountTotal,
-          stripe: {
-            ...(appt.payment?.stripe || {}),
-            paymentIntentId:
-              typeof pi === "object" && pi?.id
-                ? pi.id
-                : typeof session.payment_intent === "string"
-                ? session.payment_intent
-                : undefined,
-          },
+          stripe: stripeData,
         },
       },
       $push: {
@@ -127,8 +181,6 @@ r.get("/confirm", async (req, res, next) => {
 
 r.post("/create-session", async (req, res, next) => {
   try {
-    const stripe = getStripe();
-
     const { appointmentId, mode } = req.body || {};
     let appt = null;
     let service = null;
@@ -145,8 +197,15 @@ r.post("/create-session", async (req, res, next) => {
       if (!service) return res.status(404).json({ error: "Service not found" });
     } else {
       // Create a reserved-unpaid appointment first (same logic as /api/appointments)
-      const { beauticianId, any, serviceId, variantName, startISO, client } =
-        req.body || {};
+      const {
+        beauticianId,
+        any,
+        serviceId,
+        variantName,
+        startISO,
+        client,
+        userId,
+      } = req.body || {};
       service = await Service.findById(serviceId).lean();
       if (!service) return res.status(404).json({ error: "Service not found" });
       const variant = (service.variants || []).find(
@@ -188,6 +247,7 @@ r.post("/create-session", async (req, res, next) => {
         end,
         price: variant.price,
         status: "reserved_unpaid",
+        ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
       });
       appt = appt.toObject();
     }
@@ -213,20 +273,75 @@ r.post("/create-session", async (req, res, next) => {
     if (unit_amount < 1)
       return res.status(400).json({ error: "Invalid amount" });
 
-    const session = await stripe.checkout.sessions.create({
+    // Get beautician to check Stripe Connect status (needed before creating session)
+    const beautician = await Beautician.findById(appt.beauticianId).lean();
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
+
+    // Get the appropriate Stripe instance
+    const stripe = getStripe(
+      beautician?.stripeAccountId && beautician?.stripeStatus === "connected"
+        ? beautician.stripeAccountId
+        : null
+    );
+
+    // Create or find Stripe customer with pre-filled information
+    let stripeCustomerId = null;
+    if (appt?.client?.email) {
+      try {
+        // Search for existing customer by email
+        const existingCustomers = await stripe.customers.list({
+          email: appt.client.email,
+          limit: 1,
+        });
+
+        if (existingCustomers.data.length > 0) {
+          stripeCustomerId = existingCustomers.data[0].id;
+          console.log(
+            "[CHECKOUT] Using existing Stripe customer:",
+            stripeCustomerId
+          );
+
+          // Update existing customer with latest info
+          try {
+            await stripe.customers.update(stripeCustomerId, {
+              name: appt.client.name || undefined,
+              phone: appt.client.phone || undefined,
+            });
+            console.log("[CHECKOUT] Updated existing customer info");
+          } catch (updateErr) {
+            console.error("[CHECKOUT] Error updating customer:", updateErr);
+          }
+        } else {
+          // Create new customer with pre-filled info
+          const customer = await stripe.customers.create({
+            email: appt.client.email,
+            name: appt.client.name || undefined,
+            phone: appt.client.phone || undefined,
+            metadata: {
+              appointmentId: String(appt._id),
+            },
+          });
+          stripeCustomerId = customer.id;
+          console.log(
+            "[CHECKOUT] Created new Stripe customer:",
+            stripeCustomerId
+          );
+        }
+      } catch (err) {
+        console.error("[CHECKOUT] Error creating/finding customer:", err);
+        // Continue without customer ID - will fall back to email pre-fill
+      }
+    }
+
+    // Build checkout session config
+    let sessionConfig = {
       mode: "payment",
       client_reference_id: String(appt._id),
-      customer_email: appt?.client?.email || undefined,
       success_url: `${frontend}/success?appointmentId=${appt._id}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontend}/cancel?appointmentId=${appt._id}`,
-      payment_intent_data: {
-        metadata: {
-          appointmentId: String(appt._id),
-          type: isDeposit ? "deposit" : "full",
-        },
-      },
       metadata: {
         appointmentId: String(appt._id),
+        beauticianId: String(appt.beauticianId),
         type: isDeposit ? "deposit" : "full",
       },
       line_items: [
@@ -247,7 +362,59 @@ r.post("/create-session", async (req, res, next) => {
         },
       ],
       allow_promotion_codes: true,
-    });
+      billing_address_collection: "required",
+    };
+
+    // Use customer ID if we have one (this pre-fills all their info)
+    if (stripeCustomerId) {
+      sessionConfig.customer = stripeCustomerId;
+      // Allow updating customer details - this ensures the form shows saved data
+      sessionConfig.customer_update = {
+        name: "auto",
+        address: "auto",
+        shipping: "auto",
+      };
+      // Enable phone collection to show saved phone
+      sessionConfig.phone_number_collection = {
+        enabled: true,
+      };
+    } else if (appt?.client?.email) {
+      // Fall back to just email if no customer created
+      sessionConfig.customer_email = appt.client.email;
+      // Since we're creating a customer on the fly, set this
+      sessionConfig.customer_creation = "always";
+      // Enable phone collection for new customers
+      sessionConfig.phone_number_collection = {
+        enabled: true,
+      };
+    }
+
+    // Add Stripe Connect configuration
+    // Use DIRECT CHARGES so beautician pays Stripe fees (not destination charges)
+    if (
+      beautician?.stripeAccountId &&
+      beautician?.stripeStatus === "connected"
+    ) {
+      // Create session on connected account (direct charge)
+      // This makes the beautician pay Stripe processing fees
+      sessionConfig.payment_intent_data = {
+        application_fee_amount: platformFee, // £0.50 to platform
+        metadata: {
+          appointmentId: String(appt._id),
+          beauticianId: String(appt.beauticianId),
+          type: isDeposit ? "deposit" : "full",
+        },
+      };
+      console.log(
+        "[CHECKOUT] Creating DIRECT CHARGE on connected account:",
+        beautician.stripeAccountId,
+        "Platform fee:",
+        platformFee
+      );
+    }
+
+    // Create session using the stripe instance already created above
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     await Appointment.findByIdAndUpdate(appt._id, {
       $set: {

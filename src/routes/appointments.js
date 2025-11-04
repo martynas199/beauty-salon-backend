@@ -11,24 +11,83 @@ import {
   sendConfirmationEmail,
 } from "../emails/mailer.js";
 const r = Router();
+
 r.get("/", async (req, res) => {
-  const list = await Appointment.find()
-    .sort({ start: -1 })
-    .populate({ path: "serviceId", select: "name" })
-    .populate({ path: "beauticianId", select: "name" })
-    .lean();
-  const rows = list.map((a) => ({
-    ...a,
-    service:
-      a.serviceId && typeof a.serviceId === "object" && a.serviceId._id
-        ? a.serviceId
-        : null,
-    beautician:
-      a.beauticianId && typeof a.beauticianId === "object" && a.beauticianId._id
-        ? a.beauticianId
-        : null,
-  }));
-  res.json(rows);
+  try {
+    // Check if pagination is requested
+    const usePagination = req.query.page !== undefined;
+
+    if (usePagination) {
+      // Parse pagination params
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+      const skip = (page - 1) * limit;
+
+      // Get total count for pagination metadata
+      const total = await Appointment.countDocuments();
+
+      // Get paginated appointments
+      const list = await Appointment.find()
+        .sort({ start: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({ path: "serviceId", select: "name" })
+        .populate({ path: "beauticianId", select: "name" })
+        .lean();
+
+      const rows = list.map((a) => ({
+        ...a,
+        service:
+          a.serviceId && typeof a.serviceId === "object" && a.serviceId._id
+            ? a.serviceId
+            : null,
+        beautician:
+          a.beauticianId &&
+          typeof a.beauticianId === "object" &&
+          a.beauticianId._id
+            ? a.beauticianId
+            : null,
+      }));
+
+      // Return paginated response
+      res.json({
+        data: rows,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasMore: page * limit < total,
+        },
+      });
+    } else {
+      // Backward compatibility: return array if no page param
+      const list = await Appointment.find()
+        .sort({ start: -1 })
+        .populate({ path: "serviceId", select: "name" })
+        .populate({ path: "beauticianId", select: "name" })
+        .lean();
+
+      const rows = list.map((a) => ({
+        ...a,
+        service:
+          a.serviceId && typeof a.serviceId === "object" && a.serviceId._id
+            ? a.serviceId
+            : null,
+        beautician:
+          a.beauticianId &&
+          typeof a.beauticianId === "object" &&
+          a.beauticianId._id
+            ? a.beauticianId
+            : null,
+      }));
+
+      res.json(rows);
+    }
+  } catch (err) {
+    console.error("appointments_list_err", err);
+    res.status(500).json({ error: "Failed to fetch appointments" });
+  }
 });
 r.get("/:id", async (req, res) => {
   const { id } = req.params;
@@ -41,8 +100,16 @@ r.get("/:id", async (req, res) => {
   res.json({ ...a, service: s || null, beautician: b || null });
 });
 r.post("/", async (req, res) => {
-  const { beauticianId, any, serviceId, variantName, startISO, client, mode } =
-    req.body;
+  const {
+    beauticianId,
+    any,
+    serviceId,
+    variantName,
+    startISO,
+    client,
+    mode,
+    userId,
+  } = req.body;
   const service = await Service.findById(serviceId).lean();
   if (!service) return res.status(404).json({ error: "Service not found" });
   const variant = (service.variants || []).find((v) => v.name === variantName);
@@ -92,6 +159,7 @@ r.post("/", async (req, res) => {
     end,
     price: variant.price,
     status,
+    ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
     ...(payment ? { payment } : {}),
   });
 

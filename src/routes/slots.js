@@ -21,6 +21,23 @@ const fullyBookedCache = new Map();
 const CACHE_TTL = 60000;
 
 /**
+ * Normalize beautician object for slot computation
+ * Converts Date objects to ISO strings for timeOff
+ */
+function normalizeBeautician(beautician) {
+  if (!beautician) return beautician;
+
+  return {
+    ...beautician,
+    timeOff: (beautician.timeOff || []).map((off) => ({
+      start: off.start instanceof Date ? off.start.toISOString() : off.start,
+      end: off.end instanceof Date ? off.end.toISOString() : off.end,
+      reason: off.reason,
+    })),
+  };
+}
+
+/**
  * GET /api/slots/fully-booked
  * Returns dates that are fully booked (no available slots) for a beautician in a month
  */
@@ -30,11 +47,9 @@ r.get("/fully-booked", async (req, res) => {
 
     // Validation
     if (!beauticianId || !year || !month) {
-      return res
-        .status(400)
-        .json({
-          error: "Missing required parameters: beauticianId, year, month",
-        });
+      return res.status(400).json({
+        error: "Missing required parameters: beauticianId, year, month",
+      });
     }
 
     const yearNum = parseInt(year);
@@ -150,7 +165,7 @@ r.get("/fully-booked", async (req, res) => {
               bufferBeforeMin: variant.bufferBeforeMin || 0,
               bufferAfterMin: variant.bufferAfterMin || 0,
             },
-            beautician,
+            beautician: normalizeBeautician(beautician),
             appointments: appts.map((a) => ({
               start: new Date(a.start).toISOString(),
               end: new Date(a.end).toISOString(),
@@ -180,12 +195,10 @@ r.get("/fully-booked", async (req, res) => {
     res.json({ fullyBooked: result });
   } catch (error) {
     console.error("Error in /api/slots/fully-booked:", error);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch fully booked dates",
-        message: error.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch fully booked dates",
+      message: error.message,
+    });
   }
 });
 
@@ -226,7 +239,7 @@ r.get("/", async (req, res) => {
       salonTz,
       stepMin,
       service: svc,
-      beautician: b,
+      beautician: normalizeBeautician(b),
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),
@@ -249,7 +262,7 @@ r.get("/", async (req, res) => {
       salonTz,
       stepMin,
       service: svc,
-      beautician: b,
+      beautician: normalizeBeautician(b),
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),

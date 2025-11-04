@@ -28,7 +28,7 @@ const deleteLocalFile = (path) => {
 /**
  * GET /api/services
  * List services with optional filters
- * Query params: active, category, beauticianId, limit, skip
+ * Query params: active, category, beauticianId, page, limit
  */
 r.get("/", async (req, res, next) => {
   try {
@@ -45,9 +45,17 @@ r.get("/", async (req, res, next) => {
       active,
       category,
       beauticianId,
-      limit = 100,
+      limit = 20,
       skip = 0,
     } = queryValidation.data;
+
+    // Parse pagination params
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageLimit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit) || limit)
+    );
+    const pageSkip = req.query.page ? (page - 1) * pageLimit : skip;
 
     // Build query
     const query = {};
@@ -64,15 +72,33 @@ r.get("/", async (req, res, next) => {
       ];
     }
 
+    // Get total count for pagination
+    const total = await Service.countDocuments(query);
+
     const docs = await Service.find(query)
       .populate({ path: "primaryBeauticianId", select: "name email" })
       .populate({ path: "additionalBeauticianIds", select: "name email" })
-      .limit(limit)
-      .skip(skip)
+      .limit(pageLimit)
+      .skip(pageSkip)
       .sort({ name: 1 })
       .lean();
 
-    res.json(docs);
+    // Return paginated response if page param is used
+    if (req.query.page) {
+      res.json({
+        data: docs,
+        pagination: {
+          page,
+          limit: pageLimit,
+          total,
+          totalPages: Math.ceil(total / pageLimit),
+          hasMore: page * pageLimit < total,
+        },
+      });
+    } else {
+      // Backward compatibility: return array if no page param
+      res.json(docs);
+    }
   } catch (err) {
     next(err);
   }

@@ -68,6 +68,7 @@ const AppointmentSchema = z.object({
     .enum([
       "reserved_unpaid",
       "confirmed",
+      "completed",
       "cancelled_no_refund",
       "cancelled_partial_refund",
       "cancelled_full_refund",
