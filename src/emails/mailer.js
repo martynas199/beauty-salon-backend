@@ -13,9 +13,7 @@ function getTransport() {
   console.log("[MAILER] SMTP_PASS:", pass ? "✓ SET" : "✗ MISSING");
 
   if (!host || !user || !pass) {
-    console.warn(
-      "[MAILER] SMTP not fully configured - emails will be skipped"
-    );
+    console.warn("[MAILER] SMTP not fully configured - emails will be skipped");
     return null; // no-op mailer
   }
 
@@ -285,10 +283,10 @@ export async function sendConfirmationEmail({
 
   try {
     const info = await tx.sendMail({
-    from,
-    to: customerEmail,
-    subject: `Appointment Confirmed - ${serviceName}`,
-    text: `Hi ${appointment.client?.name || ""},
+      from,
+      to: customerEmail,
+      subject: `Appointment Confirmed - ${serviceName}`,
+      text: `Hi ${appointment.client?.name || ""},
 
 Your appointment has been confirmed!
 
@@ -307,7 +305,7 @@ If you need to cancel or reschedule, please contact us as soon as possible.
 Appointment ID: ${appointment._id}
 
 Thank you for choosing us!`,
-    html: `
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #9333ea;">Appointment Confirmed ✓</h2>
         <p>Hi ${appointment.client?.name || ""},</p>
@@ -349,7 +347,10 @@ Thank you for choosing us!`,
  * Send product order confirmation email to customer
  */
 export async function sendOrderConfirmationEmail({ order }) {
-  console.log("[MAILER] sendOrderConfirmationEmail called for order:", order?._id);
+  console.log(
+    "[MAILER] sendOrderConfirmationEmail called for order:",
+    order?._id
+  );
   const tx = getTransport();
   if (!tx) {
     console.warn("[MAILER] No transport - skipping order confirmation email");
@@ -570,7 +571,10 @@ Order ID: ${order._id}`;
  * Send admin notification for new product order
  */
 export async function sendAdminOrderNotification({ order }) {
-  console.log("[MAILER] sendAdminOrderNotification called for order:", order?._id);
+  console.log(
+    "[MAILER] sendAdminOrderNotification called for order:",
+    order?._id
+  );
   const tx = getTransport();
   if (!tx) {
     console.warn("[MAILER] No transport - skipping admin notification");
@@ -580,7 +584,9 @@ export async function sendAdminOrderNotification({ order }) {
   const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
   console.log("[MAILER] ADMIN_NOTIFY_EMAIL:", adminEmail || "NOT SET");
   if (!adminEmail) {
-    console.warn("[MAILER] No admin email configured - skipping admin notification");
+    console.warn(
+      "[MAILER] No admin email configured - skipping admin notification"
+    );
     return;
   }
 
@@ -727,7 +733,9 @@ View in admin panel to process this order.`,
         <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span style="font-weight: 600;">Order Number:</span>
-            <span style="font-weight: 700; color: #1f2937;">${order.orderNumber}</span>
+            <span style="font-weight: 700; color: #1f2937;">${
+              order.orderNumber
+            }</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span style="font-weight: 600;">Total:</span>

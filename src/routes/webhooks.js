@@ -22,8 +22,15 @@ function getStripe() {
 
 // Note: This route expects the raw request body. Ensure server mounts it with express.raw for this path.
 r.post("/stripe", async (req, res) => {
+  console.log("[WEBHOOK] ========================================");
   console.log("[WEBHOOK] Received Stripe webhook");
+  console.log("[WEBHOOK] Timestamp:", new Date().toISOString());
+  console.log("[WEBHOOK] ========================================");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  console.log(
+    "[WEBHOOK] Webhook secret configured:",
+    webhookSecret ? "YES" : "NO"
+  );
   if (!process.env.STRIPE_SECRET || !webhookSecret) {
     console.error("[WEBHOOK] Stripe not configured");
     return res.status(500).send("Stripe not configured");

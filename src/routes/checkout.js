@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import Service from "../models/Service.js";
 import Beautician from "../models/Beautician.js";
 import Appointment from "../models/Appointment.js";
+import { sendConfirmationEmail } from "../emails/mailer.js";
 
 const r = Router();
 let stripeInstance = null;
@@ -172,6 +173,30 @@ r.get("/confirm", async (req, res, next) => {
       },
     });
     console.log("[CHECKOUT CONFIRM] Appointment updated to confirmed.");
+
+    // Send confirmation email
+    try {
+      const confirmedAppt = await Appointment.findById(appt._id)
+        .populate("serviceId")
+        .populate("beauticianId");
+      
+      await sendConfirmationEmail({
+        appointment: confirmedAppt,
+        service: confirmedAppt.serviceId,
+        beautician: confirmedAppt.beauticianId,
+      });
+      console.log(
+        "[CHECKOUT CONFIRM] Confirmation email sent to:",
+        confirmedAppt.client?.email
+      );
+    } catch (emailErr) {
+      console.error(
+        "[CHECKOUT CONFIRM] Failed to send confirmation email:",
+        emailErr
+      );
+      // Don't fail the request if email fails
+    }
+
     res.json({ ok: true, status: "confirmed" });
   } catch (err) {
     console.error("[CHECKOUT CONFIRM] Error:", err);
