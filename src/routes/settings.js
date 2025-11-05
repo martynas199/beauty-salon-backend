@@ -232,6 +232,8 @@ r.post(
           provider: "cloudinary",
           publicId: cloudinaryResult.public_id,
           url: cloudinaryResult.secure_url,
+          position: "center", // Default position
+          zoom: 100, // Default zoom
         };
 
         await settings.save();
@@ -247,5 +249,53 @@ r.post(
     }
   }
 );
+
+/**
+ * PATCH /api/settings/products-hero-position
+ * Update products hero image position and zoom (admin only)
+ */
+r.patch("/products-hero-position", requireAdmin, async (req, res, next) => {
+  try {
+    const { position, zoom } = req.body;
+
+    // Validate position if provided
+    if (position && !["top", "center", "bottom"].includes(position)) {
+      return res.status(400).json({ 
+        error: "Invalid position. Must be 'top', 'center', or 'bottom'" 
+      });
+    }
+
+    // Validate zoom if provided
+    if (zoom !== undefined && (typeof zoom !== 'number' || zoom < 50 || zoom > 200)) {
+      return res.status(400).json({ 
+        error: "Invalid zoom. Must be a number between 50 and 200" 
+      });
+    }
+
+    let settings = await Settings.findById("salon-settings");
+
+    if (!settings || !settings.productsHeroImage) {
+      return res.status(404).json({ 
+        error: "No products hero image found" 
+      });
+    }
+
+    // Update position if provided
+    if (position) {
+      settings.productsHeroImage.position = position;
+    }
+
+    // Update zoom if provided
+    if (zoom !== undefined) {
+      settings.productsHeroImage.zoom = zoom;
+    }
+
+    await settings.save();
+
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default r;

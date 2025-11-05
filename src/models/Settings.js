@@ -38,6 +38,8 @@ const SettingsSchema = new mongoose.Schema(
       provider: String,
       publicId: String,
       url: String,
+      position: { type: String, default: "center" }, // top, center, bottom
+      zoom: { type: Number, default: 100 }, // 80, 100, 120, 150
     },
   },
   { timestamps: true }
