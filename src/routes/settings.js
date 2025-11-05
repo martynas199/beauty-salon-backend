@@ -183,4 +183,69 @@ r.post(
   }
 );
 
+/**
+ * POST /api/settings/upload-products-hero
+ * Upload hero image for products page (admin only)
+ */
+r.post(
+  "/upload-products-hero",
+  requireAdmin,
+  upload.single("image"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No image file provided" });
+      }
+
+      // Upload to Cloudinary
+      const cloudinaryResult = await uploadImage(req.file.path, "products-hero");
+
+      // Delete local temp file
+      deleteLocalFile(req.file.path);
+
+      // Update settings with new products hero image
+      let settings = await Settings.findById("salon-settings");
+
+      if (!settings) {
+        settings = await Settings.create({
+          _id: "salon-settings",
+          productsHeroImage: {
+            provider: "cloudinary",
+            publicId: cloudinaryResult.public_id,
+            url: cloudinaryResult.secure_url,
+          },
+        });
+      } else {
+        // Delete old image from Cloudinary if it exists
+        if (
+          settings.productsHeroImage?.publicId &&
+          settings.productsHeroImage?.provider === "cloudinary"
+        ) {
+          try {
+            await deleteImage(settings.productsHeroImage.publicId);
+          } catch (err) {
+            console.error("Failed to delete old products hero image:", err);
+          }
+        }
+
+        settings.productsHeroImage = {
+          provider: "cloudinary",
+          publicId: cloudinaryResult.public_id,
+          url: cloudinaryResult.secure_url,
+        };
+
+        await settings.save();
+      }
+
+      res.json(settings);
+    } catch (err) {
+      // Clean up temp file on error
+      if (req.file) {
+        deleteLocalFile(req.file.path);
+      }
+      next(err);
+    }
+  }
+);
+
 export default r;

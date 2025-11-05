@@ -32,6 +32,13 @@ const SettingsSchema = new mongoose.Schema(
       width: Number,
       height: Number,
     },
+
+    // Products Page Hero Image
+    productsHeroImage: {
+      provider: String,
+      publicId: String,
+      url: String,
+    },
   },
   { timestamps: true }
 );
