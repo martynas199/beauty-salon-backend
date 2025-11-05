@@ -3,6 +3,11 @@ import Stripe from "stripe";
 import Appointment from "../models/Appointment.js";
 import Beautician from "../models/Beautician.js";
 import Order from "../models/Order.js";
+import {
+  sendConfirmationEmail,
+  sendOrderConfirmationEmail,
+  sendAdminOrderNotification,
+} from "../emails/mailer.js";
 
 const r = Router();
 let stripeInstance = null;
@@ -41,43 +46,130 @@ r.post("/stripe", async (req, res) => {
         const session = event.data.object;
         const apptId =
           session.client_reference_id || session.metadata?.appointmentId;
+        const orderId = session.metadata?.orderId;
+
         console.log(
           "[WEBHOOK] checkout.session.completed - apptId:",
           apptId,
+          "orderId:",
+          orderId,
           "session:",
           session.id
         );
+
+        // Handle appointment confirmation
         if (apptId) {
           try {
-            await Appointment.findByIdAndUpdate(apptId, {
-              $set: {
-                status: "confirmed",
-                "payment.status": "succeeded",
-                "payment.provider": "stripe",
-                "payment.mode": "pay_now",
-                "payment.sessionId": session.id,
-                ...(session.amount_total != null
-                  ? { "payment.amountTotal": Number(session.amount_total) }
-                  : {}),
-              },
-              $push: {
-                audit: {
-                  at: new Date(),
-                  action: "webhook_checkout_completed",
-                  meta: { eventId: event.id },
+            const appointment = await Appointment.findByIdAndUpdate(
+              apptId,
+              {
+                $set: {
+                  status: "confirmed",
+                  "payment.status": "succeeded",
+                  "payment.provider": "stripe",
+                  "payment.mode": "pay_now",
+                  "payment.sessionId": session.id,
+                  ...(session.amount_total != null
+                    ? { "payment.amountTotal": Number(session.amount_total) }
+                    : {}),
+                },
+                $push: {
+                  audit: {
+                    at: new Date(),
+                    action: "webhook_checkout_completed",
+                    meta: { eventId: event.id },
+                  },
                 },
               },
-            });
+              { new: true }
+            )
+              .populate("serviceId")
+              .populate("beauticianId");
+
             console.log(
               "[WEBHOOK] Appointment",
               apptId,
               "updated to confirmed"
             );
+
+            // Send confirmation email
+            if (appointment) {
+              try {
+                await sendConfirmationEmail({
+                  appointment,
+                  service: appointment.serviceId,
+                  beautician: appointment.beauticianId,
+                });
+                console.log(
+                  "[WEBHOOK] Confirmation email sent for appointment",
+                  apptId
+                );
+              } catch (emailErr) {
+                console.error(
+                  "[WEBHOOK] Failed to send confirmation email:",
+                  emailErr
+                );
+              }
+            }
           } catch (e) {
             console.error("[WEBHOOK] update err", e);
           }
-        } else {
-          console.warn("[WEBHOOK] checkout.session.completed missing apptId");
+        }
+
+        // Handle product order confirmation
+        if (orderId) {
+          try {
+            const order = await Order.findByIdAndUpdate(
+              orderId,
+              {
+                $set: {
+                  paymentStatus: "paid",
+                  status: "processing",
+                },
+              },
+              { new: true }
+            );
+
+            console.log("[WEBHOOK] Order", orderId, "updated to paid");
+
+            // Send order confirmation email to customer
+            if (order) {
+              try {
+                await sendOrderConfirmationEmail({ order });
+                console.log(
+                  "[WEBHOOK] Order confirmation email sent to customer for order",
+                  orderId
+                );
+              } catch (emailErr) {
+                console.error(
+                  "[WEBHOOK] Failed to send order confirmation email:",
+                  emailErr
+                );
+              }
+
+              // Send admin notification
+              try {
+                await sendAdminOrderNotification({ order });
+                console.log(
+                  "[WEBHOOK] Admin notification sent for order",
+                  orderId
+                );
+              } catch (emailErr) {
+                console.error(
+                  "[WEBHOOK] Failed to send admin notification:",
+                  emailErr
+                );
+              }
+            }
+          } catch (e) {
+            console.error("[WEBHOOK] order update err", e);
+          }
+        }
+
+        if (!apptId && !orderId) {
+          console.warn(
+            "[WEBHOOK] checkout.session.completed missing both apptId and orderId"
+          );
         }
         break;
       }
@@ -92,27 +184,54 @@ r.post("/stripe", async (req, res) => {
         );
         if (apptId) {
           try {
-            await Appointment.findByIdAndUpdate(apptId, {
-              $set: {
-                status: "confirmed",
-                "payment.status": "succeeded",
-                "payment.provider": "stripe",
-                "payment.mode": "pay_now",
-                "payment.stripe.paymentIntentId": pi.id,
-              },
-              $push: {
-                audit: {
-                  at: new Date(),
-                  action: "webhook_pi_succeeded",
-                  meta: { eventId: event.id },
+            const appointment = await Appointment.findByIdAndUpdate(
+              apptId,
+              {
+                $set: {
+                  status: "confirmed",
+                  "payment.status": "succeeded",
+                  "payment.provider": "stripe",
+                  "payment.mode": "pay_now",
+                  "payment.stripe.paymentIntentId": pi.id,
+                },
+                $push: {
+                  audit: {
+                    at: new Date(),
+                    action: "webhook_pi_succeeded",
+                    meta: { eventId: event.id },
+                  },
                 },
               },
-            });
+              { new: true }
+            )
+              .populate("serviceId")
+              .populate("beauticianId");
+
             console.log(
               "[WEBHOOK] Appointment",
               apptId,
               "updated to confirmed via PI"
             );
+
+            // Send confirmation email
+            if (appointment) {
+              try {
+                await sendConfirmationEmail({
+                  appointment,
+                  service: appointment.serviceId,
+                  beautician: appointment.beauticianId,
+                });
+                console.log(
+                  "[WEBHOOK] Confirmation email sent for appointment",
+                  apptId
+                );
+              } catch (emailErr) {
+                console.error(
+                  "[WEBHOOK] Failed to send confirmation email:",
+                  emailErr
+                );
+              }
+            }
           } catch (e) {
             console.error("[WEBHOOK] update err", e);
           }

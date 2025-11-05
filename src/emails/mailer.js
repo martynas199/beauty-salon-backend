@@ -283,4 +283,322 @@ Thank you for choosing us!`,
   });
 }
 
-export default { sendCancellationEmails, sendConfirmationEmail };
+/**
+ * Send product order confirmation email to customer
+ */
+export async function sendOrderConfirmationEmail({ order }) {
+  const tx = getTransport();
+  if (!tx) return;
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const customerEmail = order.shippingAddress?.email;
+  if (!customerEmail) return;
+
+  const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
+  const totalPrice = `£${(order.totalPrice / 100).toFixed(2)}`;
+  const shippingCost = `£${(order.shippingCost / 100).toFixed(2)}`;
+  const subtotal = `£${((order.totalPrice - order.shippingCost) / 100).toFixed(
+    2
+  )}`;
+
+  // Build items list
+  const itemsText = order.items
+    .map(
+      (item) =>
+        `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
+          item.quantity
+        } - £${((item.price * item.quantity) / 100).toFixed(2)}`
+    )
+    .join("\n");
+
+  const itemsHtml = order.items
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          ${
+            item.image
+              ? `<img src="${item.image}" alt="${item.title}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;" />`
+              : ""
+          }
+          <div>
+            <div style="font-weight: 600; color: #1f2937;">${item.title}</div>
+            ${
+              item.size
+                ? `<div style="font-size: 13px; color: #6b7280;">${item.size}</div>`
+                : ""
+            }
+          </div>
+        </div>
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center; color: #6b7280;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: #1f2937;">
+        £${((item.price * item.quantity) / 100).toFixed(2)}
+      </td>
+    </tr>
+  `
+    )
+    .join("");
+
+  const textContent = `Hi ${customerName},
+
+Thank you for your order! We've received your payment and will process your order shortly.
+
+Order Number: ${order.orderNumber}
+Order Date: ${new Date(order.createdAt).toLocaleDateString("en-GB")}
+
+ORDER ITEMS:
+${itemsText}
+
+Subtotal: ${subtotal}
+Shipping: ${shippingCost}
+TOTAL: ${totalPrice}
+
+SHIPPING ADDRESS:
+${order.shippingAddress.firstName} ${order.shippingAddress.lastName}
+${order.shippingAddress.address}
+${order.shippingAddress.city}, ${order.shippingAddress.postalCode}
+${order.shippingAddress.country}
+Phone: ${order.shippingAddress.phone}
+
+You'll receive another email once your order has been shipped with tracking information.
+
+If you have any questions about your order, please don't hesitate to contact us.
+
+Thank you for shopping with us!
+
+Best regards,
+Beauty Salon Team
+
+Order ID: ${order._id}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #9333ea; margin: 0;">Order Confirmed! 🎉</h1>
+        <p style="color: #6b7280; margin: 10px 0 0 0;">Thank you for your purchase</p>
+      </div>
+      
+      <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="margin: 0 0 10px 0;"><strong>Hi ${customerName},</strong></p>
+        <p style="margin: 0; color: #374151;">Your order has been confirmed and we're getting it ready for shipment.</p>
+      </div>
+      
+      <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+          <span style="color: #1e40af; font-weight: 600;">Order Number:</span>
+          <span style="color: #1f2937; font-weight: 700;">${order.orderNumber}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #1e40af; font-weight: 600;">Order Date:</span>
+          <span style="color: #6b7280;">${new Date(
+            order.createdAt
+          ).toLocaleDateString("en-GB", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}</span>
+        </div>
+      </div>
+      
+      <h3 style="color: #1f2937; border-bottom: 2px solid #9333ea; padding-bottom: 10px; margin-top: 30px;">Order Items</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <thead>
+          <tr style="background-color: #f9fafb;">
+            <th style="padding: 12px; text-align: left; font-weight: 600; color: #6b7280; font-size: 13px;">ITEM</th>
+            <th style="padding: 12px; text-align: center; font-weight: 600; color: #6b7280; font-size: 13px;">QTY</th>
+            <th style="padding: 12px; text-align: right; font-weight: 600; color: #6b7280; font-size: 13px;">PRICE</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+      
+      <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span style="color: #6b7280;">Subtotal:</span>
+          <span style="color: #1f2937;">${subtotal}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+          <span style="color: #6b7280;">Shipping:</span>
+          <span style="color: #1f2937;">${shippingCost}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="font-weight: 700; color: #1f2937; font-size: 18px;">Total:</span>
+          <span style="font-weight: 700; color: #9333ea; font-size: 18px;">${totalPrice}</span>
+        </div>
+      </div>
+      
+      <h3 style="color: #1f2937; border-bottom: 2px solid #9333ea; padding-bottom: 10px; margin-top: 30px;">Shipping Address</h3>
+      <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="margin: 0; color: #1f2937; font-weight: 600;">${
+          order.shippingAddress.firstName
+        } ${order.shippingAddress.lastName}</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">${
+          order.shippingAddress.address
+        }</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">${
+          order.shippingAddress.city
+        }, ${order.shippingAddress.postalCode}</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">${
+          order.shippingAddress.country
+        }</p>
+        <p style="margin: 10px 0 0 0; color: #6b7280;">📞 ${
+          order.shippingAddress.phone
+        }</p>
+      </div>
+      
+      <div style="background-color: #ecfdf5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
+        <p style="margin: 0; color: #065f46; font-weight: 600;">📦 What's Next?</p>
+        <p style="margin: 10px 0 0 0; color: #047857; font-size: 14px;">You'll receive another email once your order has been shipped with tracking information.</p>
+      </div>
+      
+      <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">If you have any questions about your order, please don't hesitate to contact us.</p>
+      
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">Thank you for shopping with us!</p>
+        <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Beauty Salon Team</p>
+        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px;">Order ID: ${String(
+          order._id
+        )}</p>
+      </div>
+    </div>
+  `;
+
+  await tx.sendMail({
+    from,
+    to: customerEmail,
+    subject: `Order Confirmed #${order.orderNumber}`,
+    text: textContent,
+    html: htmlContent,
+  });
+}
+
+/**
+ * Send admin notification for new product order
+ */
+export async function sendAdminOrderNotification({ order }) {
+  const tx = getTransport();
+  if (!tx) return;
+
+  const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!adminEmail) return;
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
+  const totalPrice = `£${(order.totalPrice / 100).toFixed(2)}`;
+
+  const itemsList = order.items
+    .map(
+      (item) =>
+        `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
+          item.quantity
+        }`
+    )
+    .join("\n");
+
+  await tx.sendMail({
+    from,
+    to: adminEmail,
+    subject: `🛍️ New Order #${order.orderNumber} - ${totalPrice}`,
+    text: `New order received!
+
+Order Number: ${order.orderNumber}
+Total: ${totalPrice}
+Payment Status: ${order.paymentStatus}
+
+Customer: ${customerName}
+Email: ${order.shippingAddress.email}
+Phone: ${order.shippingAddress.phone}
+
+Items:
+${itemsList}
+
+Shipping Address:
+${order.shippingAddress.address}
+${order.shippingAddress.city}, ${order.shippingAddress.postalCode}
+${order.shippingAddress.country}
+
+Order ID: ${order._id}
+View in admin panel to process this order.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #9333ea; border-bottom: 2px solid #9333ea; padding-bottom: 10px;">🛍️ New Order Received</h2>
+        
+        <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="font-weight: 600;">Order Number:</span>
+            <span style="font-weight: 700; color: #1f2937;">${order.orderNumber}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="font-weight: 600;">Total:</span>
+            <span style="font-weight: 700; color: #9333ea;">${totalPrice}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 600;">Payment:</span>
+            <span style="color: #10b981; font-weight: 600;">${
+              order.paymentStatus
+            }</span>
+          </div>
+        </div>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Customer Information</h3>
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px;">
+          <p style="margin: 0; font-weight: 600;">${customerName}</p>
+          <p style="margin: 5px 0 0 0; color: #6b7280;">📧 ${
+            order.shippingAddress.email
+          }</p>
+          <p style="margin: 5px 0 0 0; color: #6b7280;">📞 ${
+            order.shippingAddress.phone
+          }</p>
+        </div>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Order Items</h3>
+        <ul style="background-color: #f9fafb; padding: 15px 15px 15px 35px; border-radius: 8px; margin: 10px 0;">
+          ${order.items
+            .map(
+              (item) =>
+                `<li style="margin: 5px 0; color: #374151;">${item.title}${
+                  item.size ? ` (${item.size})` : ""
+                } x ${item.quantity}</li>`
+            )
+            .join("")}
+        </ul>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Shipping Address</h3>
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px;">
+          <p style="margin: 0; color: #374151;">${
+            order.shippingAddress.address
+          }</p>
+          <p style="margin: 5px 0 0 0; color: #374151;">${
+            order.shippingAddress.city
+          }, ${order.shippingAddress.postalCode}</p>
+          <p style="margin: 5px 0 0 0; color: #374151;">${
+            order.shippingAddress.country
+          }</p>
+        </div>
+        
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; color: #92400e; font-weight: 600;">⚡ Action Required</p>
+          <p style="margin: 10px 0 0 0; color: #b45309; font-size: 14px;">View this order in your admin panel to process and fulfill it.</p>
+        </div>
+        
+        <p style="margin-top: 30px; color: #9ca3af; font-size: 11px;">Order ID: ${String(
+          order._id
+        )}</p>
+      </div>
+    `,
+  });
+}
+
+export default {
+  sendCancellationEmails,
+  sendConfirmationEmail,
+  sendOrderConfirmationEmail,
+  sendAdminOrderNotification,
+};

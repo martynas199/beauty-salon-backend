@@ -198,7 +198,10 @@ r.post(
       }
 
       // Upload to Cloudinary
-      const cloudinaryResult = await uploadImage(req.file.path, "products-hero");
+      const cloudinaryResult = await uploadImage(
+        req.file.path,
+        "products-hero"
+      );
 
       // Delete local temp file
       deleteLocalFile(req.file.path);
@@ -260,23 +263,26 @@ r.patch("/products-hero-position", requireAdmin, async (req, res, next) => {
 
     // Validate position if provided
     if (position && !["top", "center", "bottom"].includes(position)) {
-      return res.status(400).json({ 
-        error: "Invalid position. Must be 'top', 'center', or 'bottom'" 
+      return res.status(400).json({
+        error: "Invalid position. Must be 'top', 'center', or 'bottom'",
       });
     }
 
     // Validate zoom if provided
-    if (zoom !== undefined && (typeof zoom !== 'number' || zoom < 50 || zoom > 200)) {
-      return res.status(400).json({ 
-        error: "Invalid zoom. Must be a number between 50 and 200" 
+    if (
+      zoom !== undefined &&
+      (typeof zoom !== "number" || zoom < 50 || zoom > 200)
+    ) {
+      return res.status(400).json({
+        error: "Invalid zoom. Must be a number between 50 and 200",
       });
     }
 
     let settings = await Settings.findById("salon-settings");
 
     if (!settings || !settings.productsHeroImage) {
-      return res.status(404).json({ 
-        error: "No products hero image found" 
+      return res.status(404).json({
+        error: "No products hero image found",
       });
     }
 
