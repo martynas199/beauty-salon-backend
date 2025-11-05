@@ -38,6 +38,10 @@ import {
 
 const app = express();
 
+// Trust proxy - required for Render and other reverse proxies
+// This allows Express to correctly identify the client's IP from X-Forwarded-For header
+app.set("trust proxy", 1);
+
 // Security: Helmet for security headers
 app.use(helmet());
 
