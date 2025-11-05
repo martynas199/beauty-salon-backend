@@ -5,15 +5,29 @@ function getTransport() {
   const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
+
+  console.log("[MAILER] Checking SMTP configuration...");
+  console.log("[MAILER] SMTP_HOST:", host ? "✓ SET" : "✗ MISSING");
+  console.log("[MAILER] SMTP_PORT:", port);
+  console.log("[MAILER] SMTP_USER:", user ? "✓ SET" : "✗ MISSING");
+  console.log("[MAILER] SMTP_PASS:", pass ? "✓ SET" : "✗ MISSING");
+
   if (!host || !user || !pass) {
+    console.warn(
+      "[MAILER] SMTP not fully configured - emails will be skipped"
+    );
     return null; // no-op mailer
   }
-  return nodemailer.createTransport({
+
+  console.log("[MAILER] Creating nodemailer transport...");
+  const transport = nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
     auth: { user, pass },
   });
+  console.log("[MAILER] Transport created successfully");
+  return transport;
 }
 
 /**
@@ -26,9 +40,17 @@ export async function sendCancellationEmails({
   outcomeStatus,
   reason,
 }) {
+  console.log(
+    "[MAILER] sendCancellationEmails called for appointment:",
+    appointment?._id
+  );
   const tx = getTransport();
-  if (!tx) return;
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping cancellation emails");
+    return;
+  }
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  console.log("[MAILER] Sending from:", from);
   const salonTz = process.env.SALON_TZ || "Europe/London";
 
   const startDate = new Date(appointment.start).toLocaleString("en-GB", {
@@ -50,7 +72,9 @@ export async function sendCancellationEmails({
     : null;
 
   const cust = appointment.client?.email;
+  console.log("[MAILER] Customer email:", cust || "NOT SET");
   if (cust) {
+    console.log("[MAILER] Preparing cancellation email for customer...");
     // Build email content conditionally
     let textContent = `Hi ${appointment.client?.name || ""},\n\n`;
     textContent += `Your appointment has been cancelled.\n\n`;
@@ -122,13 +146,23 @@ export async function sendCancellationEmails({
       </div>
     `;
 
-    await tx.sendMail({
-      from,
-      to: cust,
-      subject: `Appointment Cancelled - ${serviceName}`,
-      text: textContent,
-      html: htmlContent,
-    });
+    console.log("[MAILER] Sending cancellation email to:", cust);
+    try {
+      const info = await tx.sendMail({
+        from,
+        to: cust,
+        subject: `Appointment Cancelled - ${serviceName}`,
+        text: textContent,
+        html: htmlContent,
+      });
+      console.log(
+        "[MAILER] ✓ Cancellation email sent successfully. MessageId:",
+        info.messageId
+      );
+    } catch (error) {
+      console.error("[MAILER] ✗ Failed to send cancellation email:", error);
+      throw error;
+    }
   }
 
   // Optional: Send notification to beautician/salon staff
@@ -200,10 +234,19 @@ export async function sendConfirmationEmail({
   service,
   beautician,
 }) {
+  console.log(
+    "[MAILER] sendConfirmationEmail called for appointment:",
+    appointment?._id
+  );
   const tx = getTransport();
-  if (!tx) return;
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping confirmation email");
+    return;
+  }
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  console.log("[MAILER] Sending from:", from);
+
   const salonTz = process.env.SALON_TZ || "Europe/London";
   const startTime = new Date(appointment.start).toLocaleString("en-GB", {
     timeZone: salonTz,
@@ -216,7 +259,11 @@ export async function sendConfirmationEmail({
   });
 
   const customerEmail = appointment.client?.email;
-  if (!customerEmail) return;
+  console.log("[MAILER] Customer email:", customerEmail || "NOT SET");
+  if (!customerEmail) {
+    console.warn("[MAILER] No customer email - skipping confirmation email");
+    return;
+  }
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
@@ -230,7 +277,14 @@ export async function sendConfirmationEmail({
       ? "Pay at salon"
       : appointment.status;
 
-  await tx.sendMail({
+  console.log("[MAILER] Preparing confirmation email...");
+  console.log("[MAILER] Service:", serviceName);
+  console.log("[MAILER] Beautician:", beauticianName);
+  console.log("[MAILER] Time:", startTime);
+  console.log("[MAILER] Sending confirmation email to:", customerEmail);
+
+  try {
+    const info = await tx.sendMail({
     from,
     to: customerEmail,
     subject: `Appointment Confirmed - ${serviceName}`,
@@ -280,19 +334,37 @@ Thank you for choosing us!`,
         }</p>
       </div>
     `,
-  });
+    });
+    console.log(
+      "[MAILER] ✓ Confirmation email sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error("[MAILER] ✗ Failed to send confirmation email:", error);
+    throw error;
+  }
 }
 
 /**
  * Send product order confirmation email to customer
  */
 export async function sendOrderConfirmationEmail({ order }) {
+  console.log("[MAILER] sendOrderConfirmationEmail called for order:", order?._id);
   const tx = getTransport();
-  if (!tx) return;
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping order confirmation email");
+    return;
+  }
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  console.log("[MAILER] Sending from:", from);
+
   const customerEmail = order.shippingAddress?.email;
-  if (!customerEmail) return;
+  console.log("[MAILER] Customer email:", customerEmail || "NOT SET");
+  if (!customerEmail) {
+    console.warn("[MAILER] No customer email - skipping order confirmation");
+    return;
+  }
 
   const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
   const totalPrice = `£${(order.totalPrice / 100).toFixed(2)}`;
@@ -390,7 +462,9 @@ Order ID: ${order._id}`;
       <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #3b82f6;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
           <span style="color: #1e40af; font-weight: 600;">Order Number:</span>
-          <span style="color: #1f2937; font-weight: 700;">${order.orderNumber}</span>
+          <span style="color: #1f2937; font-weight: 700;">${
+            order.orderNumber
+          }</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
           <span style="color: #1e40af; font-weight: 600;">Order Date:</span>
@@ -470,24 +544,45 @@ Order ID: ${order._id}`;
     </div>
   `;
 
-  await tx.sendMail({
-    from,
-    to: customerEmail,
-    subject: `Order Confirmed #${order.orderNumber}`,
-    text: textContent,
-    html: htmlContent,
-  });
+  console.log("[MAILER] Sending order confirmation to:", customerEmail);
+  console.log("[MAILER] Order number:", order.orderNumber);
+  console.log("[MAILER] Total items:", order.items.length);
+
+  try {
+    const info = await tx.sendMail({
+      from,
+      to: customerEmail,
+      subject: `Order Confirmed #${order.orderNumber}`,
+      text: textContent,
+      html: htmlContent,
+    });
+    console.log(
+      "[MAILER] ✓ Order confirmation email sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error("[MAILER] ✗ Failed to send order confirmation email:", error);
+    throw error;
+  }
 }
 
 /**
  * Send admin notification for new product order
  */
 export async function sendAdminOrderNotification({ order }) {
+  console.log("[MAILER] sendAdminOrderNotification called for order:", order?._id);
   const tx = getTransport();
-  if (!tx) return;
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping admin notification");
+    return;
+  }
 
   const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
-  if (!adminEmail) return;
+  console.log("[MAILER] ADMIN_NOTIFY_EMAIL:", adminEmail || "NOT SET");
+  if (!adminEmail) {
+    console.warn("[MAILER] No admin email configured - skipping admin notification");
+    return;
+  }
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
   const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
@@ -527,6 +622,105 @@ ${order.shippingAddress.country}
 Order ID: ${order._id}
 View in admin panel to process this order.`,
     html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #9333ea; border-bottom: 2px solid #9333ea; padding-bottom: 10px;">🛍️ New Order Received</h2>
+        
+        <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="font-weight: 600;">Order Number:</span>
+            <span style="font-weight: 700; color: #1f2937;">${
+              order.orderNumber
+            }</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="font-weight: 600;">Total:</span>
+            <span style="font-weight: 700; color: #9333ea;">${totalPrice}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 600;">Payment:</span>
+            <span style="color: #10b981; font-weight: 600;">${
+              order.paymentStatus
+            }</span>
+          </div>
+        </div>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Customer Information</h3>
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px;">
+          <p style="margin: 0; font-weight: 600;">${customerName}</p>
+          <p style="margin: 5px 0 0 0; color: #6b7280;">📧 ${
+            order.shippingAddress.email
+          }</p>
+          <p style="margin: 5px 0 0 0; color: #6b7280;">📞 ${
+            order.shippingAddress.phone
+          }</p>
+        </div>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Order Items</h3>
+        <ul style="background-color: #f9fafb; padding: 15px 15px 15px 35px; border-radius: 8px; margin: 10px 0;">
+          ${order.items
+            .map(
+              (item) =>
+                `<li style="margin: 5px 0; color: #374151;">${item.title}${
+                  item.size ? ` (${item.size})` : ""
+                } x ${item.quantity}</li>`
+            )
+            .join("")}
+        </ul>
+        
+        <h3 style="color: #1f2937; margin-top: 25px;">Shipping Address</h3>
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px;">
+          <p style="margin: 0; color: #374151;">${
+            order.shippingAddress.address
+          }</p>
+          <p style="margin: 5px 0 0 0; color: #374151;">${
+            order.shippingAddress.city
+          }, ${order.shippingAddress.postalCode}</p>
+          <p style="margin: 5px 0 0 0; color: #374151;">${
+            order.shippingAddress.country
+          }</p>
+        </div>
+        
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0; color: #92400e; font-weight: 600;">⚡ Action Required</p>
+          <p style="margin: 10px 0 0 0; color: #b45309; font-size: 14px;">View this order in your admin panel to process and fulfill it.</p>
+        </div>
+        
+        <p style="margin-top: 30px; color: #9ca3af; font-size: 11px;">Order ID: ${String(
+          order._id
+        )}</p>
+      </div>
+    `,
+  });
+
+  console.log("[MAILER] Sending admin notification to:", adminEmail);
+  console.log("[MAILER] Order number:", order.orderNumber);
+
+  try {
+    const info = await tx.sendMail({
+      from,
+      to: adminEmail,
+      subject: `🛍️ New Order #${order.orderNumber} - ${totalPrice}`,
+      text: `New order received!
+
+Order Number: ${order.orderNumber}
+Total: ${totalPrice}
+Payment Status: ${order.paymentStatus}
+
+Customer: ${customerName}
+Email: ${order.shippingAddress.email}
+Phone: ${order.shippingAddress.phone}
+
+Items:
+${itemsList}
+
+Shipping Address:
+${order.shippingAddress.address}
+${order.shippingAddress.city}, ${order.shippingAddress.postalCode}
+${order.shippingAddress.country}
+
+Order ID: ${order._id}
+View in admin panel to process this order.`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #9333ea; border-bottom: 2px solid #9333ea; padding-bottom: 10px;">🛍️ New Order Received</h2>
         
@@ -593,7 +787,15 @@ View in admin panel to process this order.`,
         )}</p>
       </div>
     `,
-  });
+    });
+    console.log(
+      "[MAILER] ✓ Admin notification sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error("[MAILER] ✗ Failed to send admin notification:", error);
+    throw error;
+  }
 }
 
 export default {
