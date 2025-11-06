@@ -185,10 +185,7 @@ router.get("/confirm-checkout", async (req, res) => {
       await sendAdminOrderNotification({ order: populatedOrder });
       console.log("[ORDER CONFIRM] Admin notification email sent");
     } catch (emailErr) {
-      console.error(
-        "[ORDER CONFIRM] Failed to send order emails:",
-        emailErr
-      );
+      console.error("[ORDER CONFIRM] Failed to send order emails:", emailErr);
       // Don't fail the request if email fails
     }
 

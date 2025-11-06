@@ -95,7 +95,7 @@ export async function sendCancellationEmails({
 
     textContent += `If you have any questions, please don't hesitate to contact us.\n\n`;
     textContent += `We hope to see you again soon!\n\n`;
-    textContent += `Best regards,\nBeauty Salon Team`;
+    textContent += `Best regards,\nNoble Elegance`;
 
     // HTML version
     let htmlContent = `
@@ -136,7 +136,7 @@ export async function sendCancellationEmails({
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
           <p style="margin: 0; color: #6b7280; font-size: 14px;">Best regards,</p>
-          <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Beauty Salon Team</p>
+          <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Noble Elegance</p>
           <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px;">Appointment ID: ${String(
             appointment._id
           )}</p>
@@ -368,11 +368,9 @@ export async function sendOrderConfirmationEmail({ order }) {
   }
 
   const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
-  const totalPrice = `£${(order.totalPrice / 100).toFixed(2)}`;
-  const shippingCost = `£${(order.shippingCost / 100).toFixed(2)}`;
-  const subtotal = `£${((order.totalPrice - order.shippingCost) / 100).toFixed(
-    2
-  )}`;
+  const totalPrice = `£${Number(order.total || 0).toFixed(2)}`;
+  const shippingCost = `£${Number(order.shipping || 0).toFixed(2)}`;
+  const subtotal = `£${Number(order.subtotal || 0).toFixed(2)}`;
 
   // Build items list
   const itemsText = order.items
@@ -380,7 +378,7 @@ export async function sendOrderConfirmationEmail({ order }) {
       (item) =>
         `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
           item.quantity
-        } - £${((item.price * item.quantity) / 100).toFixed(2)}`
+        } - £${(Number(item.price || 0) * item.quantity).toFixed(2)}`
     )
     .join("\n");
 
@@ -409,7 +407,7 @@ export async function sendOrderConfirmationEmail({ order }) {
         ${item.quantity}
       </td>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: #1f2937;">
-        £${((item.price * item.quantity) / 100).toFixed(2)}
+        £${(Number(item.price || 0) * item.quantity).toFixed(2)}
       </td>
     </tr>
   `
@@ -444,7 +442,7 @@ If you have any questions about your order, please don't hesitate to contact us.
 Thank you for shopping with us!
 
 Best regards,
-Beauty Salon Team
+Noble Elegance
 
 Order ID: ${order._id}`;
 
@@ -537,7 +535,7 @@ Order ID: ${order._id}`;
       
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
         <p style="margin: 0; color: #6b7280; font-size: 14px;">Thank you for shopping with us!</p>
-        <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Beauty Salon Team</p>
+        <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Noble Elegance</p>
         <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px;">Order ID: ${String(
           order._id
         )}</p>
