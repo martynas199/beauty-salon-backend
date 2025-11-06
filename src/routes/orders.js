@@ -3,6 +3,10 @@ import Stripe from "stripe";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Beautician from "../models/Beautician.js";
+import {
+  sendOrderConfirmationEmail,
+  sendAdminOrderNotification,
+} from "../emails/mailer.js";
 
 const router = Router();
 
@@ -156,6 +160,36 @@ router.get("/confirm-checkout", async (req, res) => {
         }
         await product.save();
       }
+    }
+
+    // Send order confirmation emails
+    console.log("[ORDER CONFIRM] About to send order confirmation emails...");
+    try {
+      // Reload order with populated product data for emails
+      const populatedOrder = await Order.findById(order._id).populate(
+        "items.productId"
+      );
+      console.log(
+        "[ORDER CONFIRM] Loaded order with products. Customer email:",
+        populatedOrder.customer?.email
+      );
+
+      // Send customer confirmation email
+      await sendOrderConfirmationEmail({ order: populatedOrder });
+      console.log(
+        "[ORDER CONFIRM] Customer confirmation email sent to:",
+        populatedOrder.customer?.email
+      );
+
+      // Send admin notification email
+      await sendAdminOrderNotification({ order: populatedOrder });
+      console.log("[ORDER CONFIRM] Admin notification email sent");
+    } catch (emailErr) {
+      console.error(
+        "[ORDER CONFIRM] Failed to send order emails:",
+        emailErr
+      );
+      // Don't fail the request if email fails
     }
 
     res.json({ success: true, order });
