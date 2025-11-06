@@ -20,6 +20,7 @@ const ServiceSchema = new mongoose.Schema(
     primaryBeauticianId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Beautician",
+      index: true, // Index for role-based queries
     },
     // Admin system field - additional beauticians who can perform this service
     additionalBeauticianIds: [
@@ -34,7 +35,7 @@ const ServiceSchema = new mongoose.Schema(
     // Additional fields for admin system
     price: Number,
     durationMin: Number,
-    active: { type: Boolean, default: true },
+    active: { type: Boolean, default: true, index: true }, // Index for filtering
     image: {
       provider: String,
       id: String,
@@ -56,4 +57,9 @@ const ServiceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Compound index for efficient beautician-based queries
+ServiceSchema.index({ primaryBeauticianId: 1, active: 1 });
+ServiceSchema.index({ additionalBeauticianIds: 1, active: 1 });
+
 export default mongoose.model("Service", ServiceSchema);

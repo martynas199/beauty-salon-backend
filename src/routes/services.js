@@ -7,6 +7,8 @@ import {
   serviceIdSchema,
 } from "../validations/service.schema.js";
 import requireAdmin from "../middleware/requireAdmin.js";
+import optionalAuth from "../middleware/optionalAuth.js";
+import checkServicePermission from "../middleware/checkServicePermission.js";
 import multer from "multer";
 import { uploadImage, deleteImage } from "../utils/cloudinary.js";
 import fs from "fs";
@@ -29,8 +31,15 @@ const deleteLocalFile = (path) => {
  * GET /api/services
  * List services with optional filters
  * Query params: active, category, beauticianId, page, limit
+ * 
+ * ROLE-BASED ACCESS:
+ * - Public/Guest: Returns all active services
+ * - BEAUTICIAN (admin): Returns only services assigned to them
+ * - SUPER_ADMIN: Returns all services
+ * 
+ * Uses optionalAuth middleware for optimized authentication check
  */
-r.get("/", async (req, res, next) => {
+r.get("/", optionalAuth, async (req, res, next) => {
   try {
     // Validate query params
     const queryValidation = listServicesQuerySchema.safeParse(req.query);
@@ -72,7 +81,24 @@ r.get("/", async (req, res, next) => {
       ];
     }
 
-    // Get total count for pagination
+    // ROLE-BASED FILTERING: Apply access control if authenticated
+    // req.admin is set by optionalAuth middleware if token is valid
+    if (req.admin) {
+      // BEAUTICIAN role: Only see services assigned to their beauticianId
+      if (req.admin.role === "admin" && req.admin.beauticianId) {
+        console.log(`[SERVICES] Filtering for BEAUTICIAN admin: ${req.admin.beauticianId}`);
+        query.$or = [
+          { primaryBeauticianId: req.admin.beauticianId },
+          { additionalBeauticianIds: req.admin.beauticianId },
+        ];
+      }
+      // SUPER_ADMIN: See all services (no additional filter needed)
+      else if (req.admin.role === "super_admin") {
+        console.log("[SERVICES] SUPER_ADMIN: Showing all services");
+      }
+    }
+
+    // Get total count for pagination (uses indexed fields)
     const total = await Service.countDocuments(query);
 
     const docs = await Service.find(query)
@@ -136,10 +162,18 @@ r.get("/:id", async (req, res, next) => {
 
 /**
  * POST /api/services
- * Create a new service (admin only)
+ * Create a new service (super_admin only)
  */
 r.post("/", requireAdmin, async (req, res, next) => {
   try {
+    // Only SUPER_ADMIN can create services
+    if (req.admin.role !== "super_admin") {
+      return res.status(403).json({
+        error: "Access denied",
+        message: "Only salon managers can create new services.",
+      });
+    }
+
     // Validate request body
     const validation = validateCreateService(req.body);
     if (!validation.success) {
@@ -170,83 +204,96 @@ r.post("/", requireAdmin, async (req, res, next) => {
 
 /**
  * PATCH /api/services/:id
- * Update a service (admin only)
+ * Update a service (admin with permission)
  */
-r.patch("/:id", requireAdmin, async (req, res, next) => {
-  try {
-    // Validate ID
-    const idValidation = serviceIdSchema.safeParse(req.params);
-    if (!idValidation.success) {
-      return res.status(400).json({
-        error: "Invalid service ID",
-        details: idValidation.error.errors,
-      });
+r.patch(
+  "/:id",
+  requireAdmin,
+  checkServicePermission("edit"),
+  async (req, res, next) => {
+    try {
+      // Validate ID
+      const idValidation = serviceIdSchema.safeParse(req.params);
+      if (!idValidation.success) {
+        return res.status(400).json({
+          error: "Invalid service ID",
+          details: idValidation.error.errors,
+        });
+      }
+
+      // Validate request body
+      const validation = validateUpdateService(req.body);
+      if (!validation.success) {
+        const errorMessages = validation.errors
+          .map((e) => e.message)
+          .join(", ");
+        return res.status(400).json({
+          error: errorMessages || "Validation failed",
+          details: validation.errors,
+        });
+      }
+
+      const updated = await Service.findByIdAndUpdate(
+        req.params.id,
+        { $set: validation.data },
+        { new: true, runValidators: true }
+      )
+        .populate({ path: "primaryBeauticianId", select: "name email" })
+        .populate({ path: "additionalBeauticianIds", select: "name email" })
+        .lean();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Service not found" });
+      }
+
+      res.json(updated);
+    } catch (err) {
+      next(err);
     }
-
-    // Validate request body
-    const validation = validateUpdateService(req.body);
-    if (!validation.success) {
-      const errorMessages = validation.errors.map((e) => e.message).join(", ");
-      return res.status(400).json({
-        error: errorMessages || "Validation failed",
-        details: validation.errors,
-      });
-    }
-
-    const updated = await Service.findByIdAndUpdate(
-      req.params.id,
-      { $set: validation.data },
-      { new: true, runValidators: true }
-    )
-      .populate({ path: "primaryBeauticianId", select: "name email" })
-      .populate({ path: "additionalBeauticianIds", select: "name email" })
-      .lean();
-
-    if (!updated) {
-      return res.status(404).json({ error: "Service not found" });
-    }
-
-    res.json(updated);
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 /**
  * DELETE /api/services/:id
- * Delete a service (admin only)
+ * Delete a service (super_admin only)
  * Note: Consider soft-delete (active: false) in production
  */
-r.delete("/:id", requireAdmin, async (req, res, next) => {
-  try {
-    // Validate ID
-    const idValidation = serviceIdSchema.safeParse(req.params);
-    if (!idValidation.success) {
-      return res.status(400).json({
-        error: "Invalid service ID",
-        details: idValidation.error.errors,
-      });
+r.delete(
+  "/:id",
+  requireAdmin,
+  checkServicePermission("delete"),
+  async (req, res, next) => {
+    try {
+      // Validate ID
+      const idValidation = serviceIdSchema.safeParse(req.params);
+      if (!idValidation.success) {
+        return res.status(400).json({
+          error: "Invalid service ID",
+          details: idValidation.error.errors,
+        });
+      }
+
+      const deleted = await Service.findByIdAndDelete(req.params.id);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Service not found" });
+      }
+
+      res.json({ ok: true, message: "Service deleted successfully" });
+    } catch (err) {
+      next(err);
     }
-
-    const deleted = await Service.findByIdAndDelete(req.params.id);
-
-    if (!deleted) {
-      return res.status(404).json({ error: "Service not found" });
-    }
-
-    res.json({ ok: true, message: "Service deleted successfully" });
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 /**
  * POST /api/services/:id/upload-image
- * Upload main service image to Cloudinary (admin only)
+ * Upload main service image to Cloudinary (admin with permission)
  */
 r.post(
   "/:id/upload-image",
   requireAdmin,
+  checkServicePermission("edit"),
   upload.single("image"),
   async (req, res, next) => {
     try {
@@ -318,11 +365,12 @@ r.post(
 
 /**
  * POST /api/services/:id/upload-gallery
- * Upload gallery images to Cloudinary (admin only)
+ * Upload gallery images to Cloudinary (admin with permission)
  */
 r.post(
   "/:id/upload-gallery",
   requireAdmin,
+  checkServicePermission("edit"),
   upload.array("images", 10),
   async (req, res, next) => {
     try {
