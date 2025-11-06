@@ -175,11 +175,14 @@ r.get("/confirm", async (req, res, next) => {
     console.log("[CHECKOUT CONFIRM] Appointment updated to confirmed.");
 
     // Send confirmation email
+    console.log("[CHECKOUT CONFIRM] About to send confirmation email...");
     try {
+      console.log("[CHECKOUT CONFIRM] Loading appointment with populated data...");
       const confirmedAppt = await Appointment.findById(appt._id)
         .populate("serviceId")
         .populate("beauticianId");
-      
+      console.log("[CHECKOUT CONFIRM] Loaded appointment:", confirmedAppt._id, "Client email:", confirmedAppt.client?.email);
+
       await sendConfirmationEmail({
         appointment: confirmedAppt,
         service: confirmedAppt.serviceId,
