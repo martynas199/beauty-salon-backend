@@ -74,4 +74,31 @@ export async function requireAdmin(req, res, next) {
   }
 }
 
+/**
+ * Middleware to require super admin access
+ * Must be used after requireAdmin middleware
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export function requireSuperAdmin(req, res, next) {
+  // This middleware should be used after requireAdmin
+  if (!req.admin) {
+    return res.status(401).json({
+      error: "Authentication required. Use requireAdmin middleware first.",
+    });
+  }
+
+  // Check if admin has super_admin role
+  if (req.admin.role !== "super_admin") {
+    return res.status(403).json({
+      error: "Access denied. Super admin privileges required.",
+      message: "Only super administrators can perform this action.",
+    });
+  }
+
+  next();
+}
+
 export default requireAdmin;

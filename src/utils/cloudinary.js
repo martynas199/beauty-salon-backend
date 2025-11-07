@@ -30,20 +30,64 @@ function ensureConfigured() {
 
 /**
  * Upload an image to Cloudinary.
- * @param {string} filePath - Local path of file to upload.
- * @param {string} folder - Folder to upload to (e.g., 'services', 'beauticians')
+ * @param {string|Buffer} filePathOrBuffer - Local path of file to upload OR buffer from multer.
+ * @param {string|object} folderOrOptions - Folder to upload to (e.g., 'services', 'beauticians') OR full options object
  * @returns {Promise<object>} Cloudinary upload result with secure_url, public_id, etc.
  */
-export async function uploadImage(filePath, folder = "beauty-salon") {
+export async function uploadImage(
+  filePathOrBuffer,
+  folderOrOptions = "beauty-salon"
+) {
   ensureConfigured();
 
   try {
-    const result = await cloudinary.uploader.upload(filePath, {
-      folder: folder,
-      use_filename: true,
-      unique_filename: true,
-      overwrite: false,
-    });
+    let result;
+
+    if (Buffer.isBuffer(filePathOrBuffer)) {
+      // Handle buffer upload (from multer memory storage)
+      const options =
+        typeof folderOrOptions === "string"
+          ? {
+              folder: folderOrOptions,
+              use_filename: true,
+              unique_filename: true,
+              overwrite: false,
+            }
+          : {
+              folder: "beauty-salon",
+              use_filename: true,
+              unique_filename: true,
+              overwrite: false,
+              ...folderOrOptions,
+            };
+
+      result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          options,
+          (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(filePathOrBuffer);
+      });
+    } else {
+      // Handle file path upload (traditional way)
+      const folder =
+        typeof folderOrOptions === "string"
+          ? folderOrOptions
+          : folderOrOptions.folder || "beauty-salon";
+      result = await cloudinary.uploader.upload(filePathOrBuffer, {
+        folder: folder,
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+      });
+    }
+
     console.log(`✅ Image uploaded to Cloudinary: ${result.secure_url}`);
     return result;
   } catch (error) {

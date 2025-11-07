@@ -28,6 +28,7 @@ import ordersRouter from "./routes/orders.js";
 import connectRouter from "./routes/connect.js";
 import reportsRouter from "./routes/reports.js";
 import adminsRouter from "./routes/admins.js";
+import aboutUsRouter from "./routes/aboutUs.js";
 import {
   apiLimiter,
   authLimiter,
@@ -123,6 +124,7 @@ app.use("/api/slots", readLimiter, slotsRouter);
 app.use("/api/salon", readLimiter, salonRouter);
 app.use("/api/hero-sections", readLimiter, heroSectionsRouter);
 app.use("/api/products", readLimiter, productsRouter);
+app.use("/api/about-us", aboutUsRouter);
 
 // Customer profile routes (protected)
 app.use("/api/users", usersRouter);
