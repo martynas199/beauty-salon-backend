@@ -295,6 +295,10 @@ export async function sendConfirmationEmail({
   console.log("[MAILER] Service:", serviceName);
   console.log("[MAILER] Beautician:", beauticianName);
   console.log("[MAILER] Time:", startTime);
+  console.log("[MAILER] Appointment status:", appointment.status);
+  console.log("[MAILER] Payment object:", JSON.stringify(appointment.payment, null, 2));
+  console.log("[MAILER] Payment mode:", appointment.payment?.mode);
+  console.log("[MAILER] Determined payment status:", paymentStatus);
   console.log("[MAILER] Sending confirmation email to:", customerEmail);
 
   try {
