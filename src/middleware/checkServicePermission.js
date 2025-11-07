@@ -2,11 +2,11 @@ import Service from "../models/Service.js";
 
 /**
  * Middleware to check if admin has permission to modify a specific service
- * 
+ *
  * PERMISSION RULES:
  * - SUPER_ADMIN: Can modify any service
  * - BEAUTICIAN (admin role): Can only modify services assigned to them
- * 
+ *
  * @param {string} action - 'edit' or 'delete'
  */
 export function checkServicePermission(action = "edit") {
@@ -59,15 +59,7 @@ export function checkServicePermission(action = "edit") {
           });
         }
 
-        // BEAUTICIAN cannot delete services (only super_admin can)
-        if (action === "delete") {
-          return res.status(403).json({
-            error: "Access denied",
-            message: "Only salon managers can delete services.",
-          });
-        }
-
-        // BEAUTICIAN can edit their assigned services
+        // BEAUTICIAN can edit and delete their assigned services
         return next();
       }
 

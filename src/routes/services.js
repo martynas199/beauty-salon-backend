@@ -31,12 +31,12 @@ const deleteLocalFile = (path) => {
  * GET /api/services
  * List services with optional filters
  * Query params: active, category, beauticianId, page, limit
- * 
+ *
  * ROLE-BASED ACCESS:
  * - Public/Guest: Returns all active services
  * - BEAUTICIAN (admin): Returns only services assigned to them
  * - SUPER_ADMIN: Returns all services
- * 
+ *
  * Uses optionalAuth middleware for optimized authentication check
  */
 r.get("/", optionalAuth, async (req, res, next) => {
@@ -86,7 +86,9 @@ r.get("/", optionalAuth, async (req, res, next) => {
     if (req.admin) {
       // BEAUTICIAN role: Only see services assigned to their beauticianId
       if (req.admin.role === "admin" && req.admin.beauticianId) {
-        console.log(`[SERVICES] Filtering for BEAUTICIAN admin: ${req.admin.beauticianId}`);
+        console.log(
+          `[SERVICES] Filtering for BEAUTICIAN admin: ${req.admin.beauticianId}`
+        );
         query.$or = [
           { primaryBeauticianId: req.admin.beauticianId },
           { additionalBeauticianIds: req.admin.beauticianId },
@@ -162,18 +164,12 @@ r.get("/:id", async (req, res, next) => {
 
 /**
  * POST /api/services
- * Create a new service (super_admin only)
+ * Create a new service
+ * - SUPER_ADMIN: Can create services for any beautician
+ * - BEAUTICIAN: Can only create services for themselves
  */
 r.post("/", requireAdmin, async (req, res, next) => {
   try {
-    // Only SUPER_ADMIN can create services
-    if (req.admin.role !== "super_admin") {
-      return res.status(403).json({
-        error: "Access denied",
-        message: "Only salon managers can create new services.",
-      });
-    }
-
     // Validate request body
     const validation = validateCreateService(req.body);
     if (!validation.success) {
@@ -182,6 +178,20 @@ r.post("/", requireAdmin, async (req, res, next) => {
         error: errorMessages || "Validation failed",
         details: validation.errors,
       });
+    }
+
+    // BEAUTICIAN role: Can only create services for themselves
+    if (req.admin.role === "admin" && req.admin.beauticianId) {
+      // Ensure the beautician is creating a service for themselves
+      if (
+        validation.data.primaryBeauticianId !==
+        req.admin.beauticianId.toString()
+      ) {
+        return res.status(403).json({
+          error: "Access denied",
+          message: "You can only create services for yourself.",
+        });
+      }
     }
 
     const created = await Service.create(validation.data);
