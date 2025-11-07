@@ -30,6 +30,12 @@ const VariantSchema = new Schema(
       default: null,
       min: 0,
     },
+    purchasePrice: {
+      type: Number,
+      default: null,
+      min: 0,
+      // Cost price for margin/profit calculations
+    },
     stock: {
       type: Number,
       default: 0,
@@ -105,6 +111,12 @@ const ProductSchema = new Schema(
       type: Number,
       default: null,
       min: 0,
+    },
+    purchasePrice: {
+      type: Number,
+      default: null,
+      min: 0,
+      // Legacy cost price for margin/profit calculations
     },
     stock: {
       type: Number,

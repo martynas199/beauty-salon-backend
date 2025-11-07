@@ -29,6 +29,7 @@ import connectRouter from "./routes/connect.js";
 import reportsRouter from "./routes/reports.js";
 import adminsRouter from "./routes/admins.js";
 import aboutUsRouter from "./routes/aboutUs.js";
+import analyticsRouter from "./routes/analytics.js";
 import {
   apiLimiter,
   authLimiter,
@@ -146,6 +147,7 @@ app.use("/api/timeoff", timeoffRouter);
 app.use("/api/connect", connectRouter); // Stripe Connect routes
 app.use("/api/reports", reportsRouter); // Revenue and earnings reports
 app.use("/api/admin/admins", adminsRouter); // Admin management routes
+app.use("/api/analytics", analyticsRouter); // Profit analytics routes
 
 // Error handling
 app.use((err, req, res, next) => {

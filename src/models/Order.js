@@ -24,6 +24,12 @@ const OrderItemSchema = new Schema(
       required: true,
       min: 0,
     },
+    purchasePrice: {
+      type: Number,
+      default: null,
+      min: 0,
+      // Purchase/cost price for profit calculation
+    },
     quantity: {
       type: Number,
       required: true,
