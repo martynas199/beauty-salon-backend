@@ -268,12 +268,28 @@ export async function sendConfirmationEmail({
   const price = appointment.price
     ? `£${Number(appointment.price).toFixed(2)}`
     : "";
-  const paymentStatus =
-    appointment.status === "confirmed"
-      ? "Paid"
-      : appointment.status === "reserved_unpaid"
-      ? "Pay at salon"
-      : appointment.status;
+
+  // Determine payment status based on payment mode, not just appointment status
+  let paymentStatus = "Unknown";
+  if (appointment.payment?.mode === "pay_in_salon") {
+    paymentStatus = "Pay at salon";
+  } else if (appointment.payment?.mode === "pay_now") {
+    paymentStatus =
+      appointment.payment?.status === "succeeded"
+        ? "Paid online"
+        : "Payment pending";
+  } else if (appointment.payment?.mode === "deposit") {
+    paymentStatus =
+      appointment.payment?.status === "succeeded"
+        ? "Deposit paid"
+        : "Deposit pending";
+  } else if (appointment.status === "reserved_unpaid") {
+    paymentStatus = "Pay at salon";
+  } else if (appointment.status === "confirmed") {
+    paymentStatus = "Confirmed";
+  } else {
+    paymentStatus = appointment.status;
+  }
 
   console.log("[MAILER] Preparing confirmation email...");
   console.log("[MAILER] Service:", serviceName);
