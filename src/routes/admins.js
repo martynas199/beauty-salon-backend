@@ -133,4 +133,46 @@ router.get("/:adminId", requireAdmin, async (req, res) => {
   }
 });
 
+// Delete admin (requires super_admin role)
+router.delete("/:adminId", requireAdmin, async (req, res) => {
+  try {
+    const { adminId } = req.params;
+
+    // Only super_admin can delete admins
+    if (req.admin.role !== "super_admin") {
+      return res.status(403).json({
+        error: "Only super admins can delete admin accounts",
+      });
+    }
+
+    // Prevent deleting yourself
+    if (req.admin._id.toString() === adminId) {
+      return res.status(400).json({
+        error: "You cannot delete your own account",
+      });
+    }
+
+    // Find the admin
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    // Delete the admin
+    await Admin.findByIdAndDelete(adminId);
+
+    res.json({
+      message: "Admin deleted successfully",
+      deletedAdmin: {
+        _id: admin._id,
+        name: admin.name,
+        email: admin.email,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting admin:", error);
+    res.status(500).json({ error: "Failed to delete admin" });
+  }
+});
+
 export default router;
