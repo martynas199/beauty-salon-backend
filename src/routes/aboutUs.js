@@ -132,7 +132,7 @@ router.put(
         const uploadResult = await uploadImage(req.file.buffer, {
           folder: "about-us",
           transformation: [
-            { width: 1200, height: 800, crop: "fill", gravity: "center" },
+            { width: 1200, height: 800, crop: "fit", gravity: "center" },
             { quality: "auto", fetch_format: "auto" },
           ],
         });
