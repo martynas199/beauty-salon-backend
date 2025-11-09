@@ -30,6 +30,7 @@ import reportsRouter from "./routes/reports.js";
 import adminsRouter from "./routes/admins.js";
 import aboutUsRouter from "./routes/aboutUs.js";
 import analyticsRouter from "./routes/analytics.js";
+import shippingRouter from "./routes/shipping.js";
 import {
   apiLimiter,
   authLimiter,
@@ -132,6 +133,9 @@ app.use("/api/users", usersRouter);
 
 // Orders (includes both read and write operations)
 app.use("/api/orders", ordersRouter);
+
+// Shipping rates (public endpoint)
+app.use("/api/shipping", shippingRouter);
 
 // Apply general rate limiting to remaining API routes
 app.use("/api", apiLimiter);
