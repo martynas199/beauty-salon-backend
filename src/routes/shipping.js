@@ -158,7 +158,7 @@ router.post("/calculate", async (req, res) => {
     let shippingOptions = [];
 
     if (countryCode === "GB") {
-      // UK domestic shipping options based on weight (including packaging)
+      // UK domestic shipping options based on Royal Mail pricing
       console.log(
         "🇬🇧 UK domestic shipping - selecting tier for",
         totalWeightWithPackaging.toFixed(3),
@@ -166,86 +166,53 @@ router.post("/calculate", async (req, res) => {
       );
 
       if (totalWeightWithPackaging <= 2) {
-        // Lightweight items (up to 2kg)
-        console.log("✅ Selected tier: Lightweight (up to 2kg)");
-        shippingOptions = [
-          {
-            id: "royal-mail-2nd",
-            name: "Royal Mail 2nd Class",
-            price: 3.99,
-            estimatedDays: "2-3 business days",
-            description: "Standard delivery",
-          },
-          {
-            id: "royal-mail-1st",
-            name: "Royal Mail 1st Class",
-            price: 5.99,
-            estimatedDays: "1-2 business days",
-            description: "Faster delivery",
-          },
-          {
-            id: "royal-mail-tracked",
-            name: "Royal Mail Tracked 24",
-            price: 7.99,
-            estimatedDays: "Next working day",
-            description: "Next day with tracking",
-          },
-        ];
-      } else if (totalWeightWithPackaging <= 5) {
-        // Medium weight (2-5kg)
-        console.log("✅ Selected tier: Medium (2-5kg)");
-        shippingOptions = [
-          {
-            id: "royal-mail-tracked-48",
-            name: "Royal Mail Tracked 48",
-            price: 8.99,
-            estimatedDays: "2-3 business days",
-            description: "Standard tracked delivery",
-          },
-          {
-            id: "royal-mail-tracked-24",
-            name: "Royal Mail Tracked 24",
-            price: 11.99,
-            estimatedDays: "Next working day",
-            description: "Next day with tracking",
-          },
-        ];
-      } else if (totalWeightWithPackaging <= 10) {
-        // Heavy items (5-10kg)
-        console.log("✅ Selected tier: Heavy (5-10kg)");
+        // Small parcel (up to 2kg) - Maximum size: 45 x 35 x 16cm
+        console.log("✅ Selected tier: Small Parcel (up to 2kg)");
         shippingOptions = [
           {
             id: "tracked-48",
-            name: "Royal Mail Tracked 48",
-            price: 12.99,
+            name: "Tracked 48",
+            price: 3.55,
             estimatedDays: "2-3 business days",
-            description: "Standard tracked delivery",
+            description: "Two day delivery aim",
           },
           {
             id: "tracked-24",
-            name: "Royal Mail Tracked 24",
-            price: 15.99,
-            estimatedDays: "Next working day",
-            description: "Next day with tracking",
+            name: "Tracked 24",
+            price: 4.45,
+            estimatedDays: "1 business day",
+            description: "Next day delivery aim",
+          },
+          {
+            id: "tracked-24-signature",
+            name: "Tracked 24 with Signature",
+            price: 5.95,
+            estimatedDays: "1 business day",
+            description: "Next day delivery aim",
+          },
+        ];
+      } else if (totalWeightWithPackaging <= 10) {
+        // Medium parcel (2-10kg) - Maximum size: 61 x 46 x 46cm
+        console.log("✅ Selected tier: Medium Parcel (2-10kg)");
+        shippingOptions = [
+          {
+            id: "tracked-48-signature",
+            name: "Tracked 48 with Signature",
+            price: 8.55,
+            estimatedDays: "2-3 business days",
+            description: "Two day delivery aim with signature",
           },
         ];
       } else {
-        // Very heavy (over 10kg)
-        console.log("✅ Selected tier: Very Heavy (10kg+)");
+        // Over 10kg - custom quote needed
+        console.log("⚠️ Weight over 10kg - custom quote needed");
         shippingOptions = [
           {
-            id: "courier-standard",
-            name: "Courier Standard",
-            price: 18.99,
-            estimatedDays: "3-5 business days",
-            description: "Standard courier delivery",
-          },
-          {
-            id: "courier-express",
-            name: "Courier Express",
-            price: 24.99,
-            estimatedDays: "1-2 business days",
-            description: "Express courier delivery",
+            id: "custom-quote",
+            name: "Custom Shipping Quote",
+            price: 15.99,
+            estimatedDays: "Contact us",
+            description: "Please contact us for a custom shipping quote",
           },
         ];
       }
