@@ -300,9 +300,13 @@ r.post("/create-session", async (req, res, next) => {
       });
     }
     const baseAmount = Number(appt.price || 0);
-    const amountToPay = isDeposit
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
+    
+    // Add platform fee to the base amount for client to pay
+    const amountBeforeFee = isDeposit
       ? (baseAmount * depositPct) / 100
       : baseAmount;
+    const amountToPay = amountBeforeFee + (platformFee / 100); // Convert pence to pounds
 
     const unit_amount = toMinorUnits(amountToPay);
     if (unit_amount < 1)
@@ -310,7 +314,6 @@ r.post("/create-session", async (req, res, next) => {
 
     // Get beautician to check Stripe Connect status (needed before creating session)
     const beautician = await Beautician.findById(appt.beauticianId).lean();
-    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
 
     // Get the appropriate Stripe instance
     const stripe = getStripe(

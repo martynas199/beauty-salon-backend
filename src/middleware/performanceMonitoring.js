@@ -9,14 +9,14 @@
 export function requestTimer(threshold = 1000) {
   return (req, res, next) => {
     const startTime = Date.now();
-    
+
     // Store original end function
     const originalEnd = res.end;
-    
+
     // Override end function to log timing
-    res.end = function(...args) {
+    res.end = function (...args) {
       const duration = Date.now() - startTime;
-      
+
       // Log request details
       const logData = {
         method: req.method,
@@ -25,18 +25,18 @@ export function requestTimer(threshold = 1000) {
         duration: `${duration}ms`,
         timestamp: new Date().toISOString(),
       };
-      
+
       // Warn on slow requests
       if (duration > threshold) {
-        console.warn('⚠️  Slow Request:', logData);
+        console.warn("⚠️  Slow Request:", logData);
       } else {
-        console.log('✓ Request:', logData);
+        console.log("✓ Request:", logData);
       }
-      
+
       // Call original end
       originalEnd.apply(res, args);
     };
-    
+
     next();
   };
 }

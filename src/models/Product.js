@@ -158,8 +158,8 @@ ProductSchema.index({ featured: 1, order: 1 }); // Already exists
 ProductSchema.index({ category: 1, active: 1 }); // Already exists
 ProductSchema.index({ active: 1, createdAt: -1 }); // Active products
 ProductSchema.index({ beauticianId: 1, active: 1 }); // Beautician's products
-ProductSchema.index({ title: 'text', description: 'text' }); // Text search
-ProductSchema.index({ 'variants.stock': 1 }); // Stock availability
+ProductSchema.index({ title: "text", description: "text" }); // Text search
+ProductSchema.index({ "variants.stock": 1 }); // Stock availability
 
 const Product = model("Product", ProductSchema);
 

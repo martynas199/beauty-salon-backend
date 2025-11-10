@@ -63,6 +63,6 @@ ServiceSchema.index({ primaryBeauticianId: 1, active: 1 }); // Already exists
 ServiceSchema.index({ additionalBeauticianIds: 1, active: 1 }); // Already exists
 ServiceSchema.index({ category: 1, active: 1 }); // Category filtering
 ServiceSchema.index({ active: 1, createdAt: -1 }); // Active services sorted by date
-ServiceSchema.index({ name: 'text', description: 'text' }); // Text search
+ServiceSchema.index({ name: "text", description: "text" }); // Text search
 
 export default mongoose.model("Service", ServiceSchema);

@@ -39,7 +39,9 @@ router.get("/", async (req, res) => {
       // Paginated response
       const [orders, total] = await Promise.all([
         Order.find(filter)
-          .select('orderNumber userId items subtotal shipping total orderStatus paymentStatus createdAt shippingAddress')
+          .select(
+            "orderNumber userId items subtotal shipping total orderStatus paymentStatus createdAt shippingAddress"
+          )
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(pageLimit)

@@ -17,11 +17,11 @@ class CacheManager {
    */
   set(key, value, ttl = 5 * 60 * 1000) {
     this.cache.set(key, value);
-    
+
     if (ttl > 0) {
       const expiresAt = Date.now() + ttl;
       this.ttls.set(key, expiresAt);
-      
+
       // Schedule cleanup
       setTimeout(() => {
         this.delete(key);
@@ -43,7 +43,7 @@ class CacheManager {
         return undefined;
       }
     }
-    
+
     return this.cache.get(key);
   }
 
@@ -113,8 +113,8 @@ class CacheManager {
   static generateKey(prefix, params = {}) {
     const sortedParams = Object.keys(params)
       .sort()
-      .map(key => `${key}:${params[key]}`)
-      .join('|');
+      .map((key) => `${key}:${params[key]}`)
+      .join("|");
     return `${prefix}:${sortedParams}`;
   }
 }
@@ -124,11 +124,11 @@ const cache = new CacheManager();
 
 // Cache TTL presets (in milliseconds)
 export const CacheTTL = {
-  SHORT: 1 * 60 * 1000,      // 1 minute
-  MEDIUM: 5 * 60 * 1000,     // 5 minutes
-  LONG: 15 * 60 * 1000,      // 15 minutes
-  HOUR: 60 * 60 * 1000,      // 1 hour
-  DAY: 24 * 60 * 60 * 1000,  // 1 day
+  SHORT: 1 * 60 * 1000, // 1 minute
+  MEDIUM: 5 * 60 * 1000, // 5 minutes
+  LONG: 15 * 60 * 1000, // 15 minutes
+  HOUR: 60 * 60 * 1000, // 1 hour
+  DAY: 24 * 60 * 60 * 1000, // 1 day
 };
 
 export default cache;

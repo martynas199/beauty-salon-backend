@@ -238,7 +238,7 @@ OrderSchema.index({ paymentStatus: 1 }); // Already exists
 OrderSchema.index({ userId: 1, createdAt: -1 }); // User's orders
 OrderSchema.index({ orderStatus: 1, createdAt: -1 }); // Status-filtered orders
 OrderSchema.index({ paymentStatus: 1, orderStatus: 1 }); // Combined status
-OrderSchema.index({ 'items.beauticianId': 1, createdAt: -1 }); // Beautician sales
+OrderSchema.index({ "items.beauticianId": 1, createdAt: -1 }); // Beautician sales
 
 const Order = model("Order", OrderSchema);
 

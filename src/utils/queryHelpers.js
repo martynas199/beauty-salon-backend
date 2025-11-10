@@ -10,11 +10,7 @@
  * @returns {Object} Pagination parameters
  */
 export function parsePagination(query, options = {}) {
-  const {
-    defaultLimit = 50,
-    maxLimit = 100,
-    defaultPage = 1,
-  } = options;
+  const { defaultLimit = 50, maxLimit = 100, defaultPage = 1 } = options;
 
   let limit = parseInt(query.limit) || defaultLimit;
   let page = parseInt(query.page) || defaultPage;
@@ -38,10 +34,10 @@ export function parsePagination(query, options = {}) {
  * @param {String} defaultFields - Default fields to select
  * @returns {String} Fields for .select()
  */
-export function parseFields(query, defaultFields = '') {
+export function parseFields(query, defaultFields = "") {
   if (query.fields) {
     // Convert comma-separated to space-separated
-    return query.fields.split(',').join(' ');
+    return query.fields.split(",").join(" ");
   }
   return defaultFields;
 }
@@ -52,10 +48,10 @@ export function parseFields(query, defaultFields = '') {
  * @param {String} defaultSort - Default sort (e.g., '-createdAt')
  * @returns {String} Sort string for Mongoose
  */
-export function parseSort(query, defaultSort = '-createdAt') {
+export function parseSort(query, defaultSort = "-createdAt") {
   if (query.sort) {
     // Convert comma-separated to space-separated
-    return query.sort.split(',').join(' ');
+    return query.sort.split(",").join(" ");
   }
   return defaultSort;
 }
@@ -69,8 +65,8 @@ export function parseSort(query, defaultSort = '-createdAt') {
  */
 export function applyQueryOptimizations(query, params, options = {}) {
   const {
-    defaultFields = '',
-    defaultSort = '-createdAt',
+    defaultFields = "",
+    defaultSort = "-createdAt",
     defaultLimit = 50,
     maxLimit = 100,
     lean = true,
@@ -129,7 +125,13 @@ export function createPaginationMeta(total, page, limit) {
  * @param {Object} options - Configuration options
  * @returns {Object} { data, pagination }
  */
-export async function executePaginatedQuery(query, model, filter, params, options = {}) {
+export async function executePaginatedQuery(
+  query,
+  model,
+  filter,
+  params,
+  options = {}
+) {
   const { limit, page } = parsePagination(params, options);
 
   // Execute query and count in parallel
@@ -150,10 +152,14 @@ export async function executePaginatedQuery(query, model, filter, params, option
  * Common field selections for different models
  */
 export const commonFields = {
-  appointment: '_id userId client beauticianId serviceId variantName start end price status createdAt',
-  service: '_id name description category image variants active primaryBeauticianId',
-  beautician: '_id name email phone bio specialty image active',
-  product: '_id title description price originalPrice image category featured active',
-  order: '_id orderNumber userId items total orderStatus paymentStatus createdAt',
-  user: '_id name email phone role isActive createdAt',
+  appointment:
+    "_id userId client beauticianId serviceId variantName start end price status createdAt",
+  service:
+    "_id name description category image variants active primaryBeauticianId",
+  beautician: "_id name email phone bio specialty image active",
+  product:
+    "_id title description price originalPrice image category featured active",
+  order:
+    "_id orderNumber userId items total orderStatus paymentStatus createdAt",
+  user: "_id name email phone role isActive createdAt",
 };

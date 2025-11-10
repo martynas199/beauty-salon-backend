@@ -269,19 +269,31 @@ export async function sendConfirmationEmail({
     ? `£${Number(appointment.price).toFixed(2)}`
     : "";
 
-  // Determine payment status based on payment mode, not just appointment status
+  // Determine payment status and deposit info
   let paymentStatus = "Unknown";
+  let isDepositPayment = false;
+  let depositAmount = 0;
+  let remainingBalance = 0;
+
   if (appointment.payment?.mode === "pay_in_salon") {
     paymentStatus = "Pay at salon";
   } else if (appointment.payment?.mode === "pay_now") {
     paymentStatus =
       appointment.payment?.status === "succeeded"
-        ? "Paid online"
+        ? "Paid online (Full payment)"
         : "Payment pending";
   } else if (appointment.payment?.mode === "deposit") {
+    isDepositPayment = true;
+    // Calculate deposit amount from payment.amountTotal (in pence)
+    depositAmount = appointment.payment?.amountTotal
+      ? appointment.payment.amountTotal / 100
+      : 0;
+    const totalPrice = Number(appointment.price || 0);
+    remainingBalance = totalPrice - depositAmount;
+
     paymentStatus =
       appointment.payment?.status === "succeeded"
-        ? "Deposit paid"
+        ? `Deposit paid (£${depositAmount.toFixed(2)})`
         : "Deposit pending";
   } else if (appointment.status === "reserved_unpaid") {
     paymentStatus = "Pay at salon";
@@ -317,7 +329,13 @@ Service: ${serviceName}
 With: ${beauticianName}
 Date & Time: ${startTime}
 Price: ${price}
-Payment: ${paymentStatus}
+Payment: ${paymentStatus}${
+        isDepositPayment && remainingBalance > 0
+          ? `\nRemaining Balance: £${remainingBalance.toFixed(
+              2
+            )} (to be paid at salon)`
+          : ""
+      }
 
 ${
   appointment.client?.notes ? `Your notes: ${appointment.client.notes}\n\n` : ""
@@ -340,6 +358,19 @@ Thank you for choosing us!`,
           <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startTime}</p>
           <p style="margin: 8px 0;"><strong>Price:</strong> ${price}</p>
           <p style="margin: 8px 0;"><strong>Payment:</strong> ${paymentStatus}</p>
+          ${
+            isDepositPayment && remainingBalance > 0
+              ? `
+          <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #f59e0b;">
+            <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">💰 Remaining Balance</p>
+            <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">£${remainingBalance.toFixed(
+                2
+              )}</p>
+            <p style="margin: 5px 0 0 0; color: #b45309; font-size: 13px;">To be paid at the salon</p>
+          </div>
+          `
+              : ""
+          }
         </div>
         
         ${
