@@ -364,8 +364,8 @@ Thank you for choosing us!`,
           <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #f59e0b;">
             <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">💰 Remaining Balance</p>
             <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">£${remainingBalance.toFixed(
-                2
-              )}</p>
+              2
+            )}</p>
             <p style="margin: 5px 0 0 0; color: #b45309; font-size: 13px;">To be paid at the salon</p>
           </div>
           `
