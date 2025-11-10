@@ -293,7 +293,7 @@ export async function sendConfirmationEmail({
       ? appointment.payment.amountTotal / 100
       : 0;
     depositAmount = totalPaid - bookingFee; // Actual deposit without fee
-    
+
     const totalPrice = Number(appointment.price || 0);
     remainingBalance = totalPrice - depositAmount;
 
@@ -337,9 +337,11 @@ Date & Time: ${startTime}
 Price: ${price}
 ${
   isDepositPayment
-    ? `Deposit: £${depositAmount.toFixed(2)}\nBooking Fee: £${bookingFee.toFixed(
+    ? `Deposit: £${depositAmount.toFixed(
         2
-      )}\nTotal Paid: £${(depositAmount + bookingFee).toFixed(2)}`
+      )}\nBooking Fee: £${bookingFee.toFixed(2)}\nTotal Paid: £${(
+        depositAmount + bookingFee
+      ).toFixed(2)}`
     : `Payment: ${paymentStatus}`
 }${
         isDepositPayment && remainingBalance > 0
