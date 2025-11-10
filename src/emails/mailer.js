@@ -273,6 +273,7 @@ export async function sendConfirmationEmail({
   let paymentStatus = "Unknown";
   let isDepositPayment = false;
   let depositAmount = 0;
+  let bookingFee = 0;
   let remainingBalance = 0;
 
   if (appointment.payment?.mode === "pay_in_salon") {
@@ -287,18 +288,18 @@ export async function sendConfirmationEmail({
     // Calculate deposit amount from payment.amountTotal (in pence)
     // Note: amountTotal includes the £0.50 booking fee
     const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
-    depositAmount = appointment.payment?.amountTotal
+    bookingFee = platformFee / 100; // Convert to pounds for display
+    const totalPaid = appointment.payment?.amountTotal
       ? appointment.payment.amountTotal / 100
       : 0;
+    depositAmount = totalPaid - bookingFee; // Actual deposit without fee
+    
     const totalPrice = Number(appointment.price || 0);
-    // Remove the booking fee from deposit when calculating remaining balance
-    // because the fee was paid upfront with the deposit
-    const depositWithoutFee = depositAmount - (platformFee / 100);
-    remainingBalance = totalPrice - depositWithoutFee;
+    remainingBalance = totalPrice - depositAmount;
 
     paymentStatus =
       appointment.payment?.status === "succeeded"
-        ? `Deposit paid (£${depositAmount.toFixed(2)})`
+        ? `Deposit paid`
         : "Deposit pending";
   } else if (appointment.status === "reserved_unpaid") {
     paymentStatus = "Pay at salon";
@@ -334,7 +335,13 @@ Service: ${serviceName}
 With: ${beauticianName}
 Date & Time: ${startTime}
 Price: ${price}
-Payment: ${paymentStatus}${
+${
+  isDepositPayment
+    ? `Deposit: £${depositAmount.toFixed(2)}\nBooking Fee: £${bookingFee.toFixed(
+        2
+      )}\nTotal Paid: £${(depositAmount + bookingFee).toFixed(2)}`
+    : `Payment: ${paymentStatus}`
+}${
         isDepositPayment && remainingBalance > 0
           ? `\nRemaining Balance: £${remainingBalance.toFixed(
               2
@@ -362,7 +369,24 @@ Thank you for choosing us!`,
           <p style="margin: 8px 0;"><strong>With:</strong> ${beauticianName}</p>
           <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startTime}</p>
           <p style="margin: 8px 0;"><strong>Price:</strong> ${price}</p>
-          <p style="margin: 8px 0;"><strong>Payment:</strong> ${paymentStatus}</p>
+          ${
+            isDepositPayment
+              ? `
+          <div style="background-color: #ecfdf5; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #10b981;">
+            <p style="margin: 0 0 8px 0; color: #065f46; font-weight: 600; font-size: 14px;">💳 Payment Details</p>
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Deposit: <strong>£${depositAmount.toFixed(
+              2
+            )}</strong></p>
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>£${bookingFee.toFixed(
+              2
+            )}</strong></p>
+            <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: £${(
+              depositAmount + bookingFee
+            ).toFixed(2)}</p>
+          </div>
+          `
+              : `<p style="margin: 8px 0;"><strong>Payment:</strong> ${paymentStatus}</p>`
+          }
           ${
             isDepositPayment && remainingBalance > 0
               ? `
