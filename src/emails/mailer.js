@@ -285,11 +285,16 @@ export async function sendConfirmationEmail({
   } else if (appointment.payment?.mode === "deposit") {
     isDepositPayment = true;
     // Calculate deposit amount from payment.amountTotal (in pence)
+    // Note: amountTotal includes the £0.50 booking fee
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
     depositAmount = appointment.payment?.amountTotal
       ? appointment.payment.amountTotal / 100
       : 0;
     const totalPrice = Number(appointment.price || 0);
-    remainingBalance = totalPrice - depositAmount;
+    // Remove the booking fee from deposit when calculating remaining balance
+    // because the fee was paid upfront with the deposit
+    const depositWithoutFee = depositAmount - (platformFee / 100);
+    remainingBalance = totalPrice - depositWithoutFee;
 
     paymentStatus =
       appointment.payment?.status === "succeeded"
