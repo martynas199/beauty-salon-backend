@@ -58,8 +58,11 @@ const ServiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index for efficient beautician-based queries
-ServiceSchema.index({ primaryBeauticianId: 1, active: 1 });
-ServiceSchema.index({ additionalBeauticianIds: 1, active: 1 });
+// Performance indexes for common queries
+ServiceSchema.index({ primaryBeauticianId: 1, active: 1 }); // Already exists
+ServiceSchema.index({ additionalBeauticianIds: 1, active: 1 }); // Already exists
+ServiceSchema.index({ category: 1, active: 1 }); // Category filtering
+ServiceSchema.index({ active: 1, createdAt: -1 }); // Active services sorted by date
+ServiceSchema.index({ name: 'text', description: 'text' }); // Text search
 
 export default mongoose.model("Service", ServiceSchema);

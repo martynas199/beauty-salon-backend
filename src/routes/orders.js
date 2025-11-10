@@ -23,17 +23,49 @@ function getStripe() {
 // GET /api/orders - List all orders (admin)
 router.get("/", async (req, res) => {
   try {
-    const { status, paymentStatus, limit = 50 } = req.query;
+    const { status, paymentStatus, page, limit = 50 } = req.query;
     const filter = {};
 
     if (status) filter.orderStatus = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
 
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+    // Pagination support
+    const usePagination = page !== undefined;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageLimit = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const skip = (pageNum - 1) * pageLimit;
 
-    res.json(orders);
+    if (usePagination) {
+      // Paginated response
+      const [orders, total] = await Promise.all([
+        Order.find(filter)
+          .select('orderNumber userId items subtotal shipping total orderStatus paymentStatus createdAt shippingAddress')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(pageLimit)
+          .lean(),
+        Order.countDocuments(filter),
+      ]);
+
+      res.json({
+        data: orders,
+        pagination: {
+          page: pageNum,
+          limit: pageLimit,
+          total,
+          totalPages: Math.ceil(total / pageLimit),
+          hasMore: pageNum * pageLimit < total,
+        },
+      });
+    } else {
+      // Legacy: return limited orders
+      const orders = await Order.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(pageLimit)
+        .lean();
+
+      res.json(orders);
+    }
   } catch (error) {
     console.error("Error fetching orders:", error);
     res.status(500).json({ error: error.message });

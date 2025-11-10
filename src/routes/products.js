@@ -21,18 +21,48 @@ async function deleteLocalFile(filePath) {
 // GET /api/products - List all products
 router.get("/", async (req, res) => {
   try {
-    const { featured, category, active } = req.query;
+    const { featured, category, active, page, limit } = req.query;
     const filter = {};
 
     if (featured === "true") filter.featured = true;
     if (category) filter.category = category;
     if (active !== undefined) filter.active = active === "true";
 
-    const products = await Product.find(filter).sort({
-      order: 1,
-      createdAt: -1,
-    });
-    res.json(products);
+    // Pagination support
+    const usePagination = page !== undefined;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageLimit = Math.min(100, Math.max(1, parseInt(limit) || 50));
+    const skip = (pageNum - 1) * pageLimit;
+
+    if (usePagination) {
+      // Paginated response with count
+      const [products, total] = await Promise.all([
+        Product.find(filter)
+          .select('_id title description price originalPrice image category featured active variants')
+          .sort({ order: 1, createdAt: -1 })
+          .skip(skip)
+          .limit(pageLimit)
+          .lean(),
+        Product.countDocuments(filter),
+      ]);
+
+      res.json({
+        data: products,
+        pagination: {
+          page: pageNum,
+          limit: pageLimit,
+          total,
+          totalPages: Math.ceil(total / pageLimit),
+          hasMore: pageNum * pageLimit < total,
+        },
+      });
+    } else {
+      // Legacy: return all products
+      const products = await Product.find(filter)
+        .sort({ order: 1, createdAt: -1 })
+        .lean();
+      res.json(products);
+    }
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ error: error.message });
@@ -42,7 +72,7 @@ router.get("/", async (req, res) => {
 // GET /api/products/:id - Get single product
 router.get("/:id", async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).lean();
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }

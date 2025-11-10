@@ -78,4 +78,10 @@ const BeauticianSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Performance indexes for common queries
+BeauticianSchema.index({ active: 1, createdAt: -1 }); // Active beauticians
+BeauticianSchema.index({ email: 1 }); // Email lookups
+BeauticianSchema.index({ stripeStatus: 1 }); // Stripe onboarding status
+BeauticianSchema.index({ stripeAccountId: 1 }); // Already has index
+
 export default mongoose.model("Beautician", BeauticianSchema);

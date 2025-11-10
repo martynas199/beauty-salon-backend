@@ -99,5 +99,12 @@ const AppointmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-AppointmentSchema.index({ beauticianId: 1, start: 1 });
+// Performance indexes for common queries
+AppointmentSchema.index({ beauticianId: 1, start: 1 }); // Already exists
+AppointmentSchema.index({ start: 1, end: 1 }); // Date range queries
+AppointmentSchema.index({ status: 1, start: 1 }); // Status-based filtering
+AppointmentSchema.index({ userId: 1, start: -1 }); // User's appointments sorted by date
+AppointmentSchema.index({ 'client.email': 1 }); // Guest booking lookups
+AppointmentSchema.index({ createdAt: -1 }); // Recent appointments
+
 export default mongoose.model("Appointment", AppointmentSchema);
