@@ -484,11 +484,9 @@ router.post("/checkout", async (req, res) => {
     };
 
     // If single beautician order, use destination charges so beautician pays Stripe fees
-    if (stripeConnectPayments.length === 1) {
+    if (stripeConnectPayments.length === 1 && stripeConnectPayments[0].beauticianStripeAccount) {
       const payment = stripeConnectPayments[0];
       sessionConfig.payment_intent_data = {
-        on_behalf_of: payment.beauticianStripeAccount, // Beautician pays Stripe fees
-        application_fee_amount: 0, // No platform fee on products
         transfer_data: {
           destination: payment.beauticianStripeAccount,
         },
