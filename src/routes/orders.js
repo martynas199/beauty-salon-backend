@@ -265,7 +265,7 @@ router.get("/:id", async (req, res) => {
 router.post("/checkout", async (req, res) => {
   try {
     const stripe = getStripe();
-    const { items, shippingAddress } = req.body;
+    const { items, shippingAddress, shippingMethod } = req.body;
 
     if (!items || items.length === 0) {
       return res
@@ -327,8 +327,8 @@ router.post("/checkout", async (req, res) => {
       subtotal += price * item.quantity;
     }
 
-    // Calculate totals
-    const shipping = subtotal >= 50 ? 0 : 5.99;
+    // Use selected shipping method price, or calculate default
+    const shipping = shippingMethod?.price ?? (subtotal >= 50 ? 0 : 5.99);
     const total = subtotal + shipping;
 
     // Create pending order
@@ -406,17 +406,25 @@ router.post("/checkout", async (req, res) => {
       }
     }
 
-    // Add shipping line item
-    if (shipping > 0) {
-      lineItems.push({
-        price_data: {
-          currency,
-          unit_amount: Math.round(shipping * 100),
-          product_data: { name: "Shipping" },
+    // Note: Shipping is now handled via shipping_options in Stripe Checkout
+    // Don't add shipping as a line item since Stripe will add it based on shipping_options
+
+    // Create or retrieve Stripe customer with pre-filled shipping address
+    const customer = await stripe.customers.create({
+      email: shippingAddress.email,
+      name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+      phone: shippingAddress.phone,
+      shipping: {
+        name: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+        phone: shippingAddress.phone,
+        address: {
+          line1: shippingAddress.address,
+          city: shippingAddress.city,
+          postal_code: shippingAddress.postalCode,
+          country: shippingAddress.country === "United Kingdom" ? "GB" : "IE",
         },
-        quantity: 1,
-      });
-    }
+      },
+    });
 
     // Create Stripe Checkout session
     // For single-beautician orders, use destination charges (beautician pays fees)
@@ -424,7 +432,7 @@ router.post("/checkout", async (req, res) => {
     const sessionConfig = {
       mode: "payment",
       client_reference_id: String(order._id),
-      customer_email: shippingAddress.email,
+      customer: customer.id,
       success_url: `${frontend}/shop/success?orderId=${order._id}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontend}/shop/cancel?orderId=${order._id}`,
       metadata: {
@@ -432,8 +440,39 @@ router.post("/checkout", async (req, res) => {
         type: "product_order",
       },
       line_items: lineItems,
-      shipping_address_collection: {
-        allowed_countries: ["GB"],
+      shipping_options: [
+        {
+          shipping_rate_data: {
+            type: "fixed_amount",
+            fixed_amount: {
+              amount: Math.round(shipping * 100),
+              currency,
+            },
+            display_name: shippingMethod?.name || (shipping === 0 ? "Free Shipping" : "Standard Shipping"),
+            delivery_estimate: shippingMethod?.estimatedDays ? {
+              minimum: {
+                unit: "business_day",
+                value: parseInt(shippingMethod.estimatedDays.split("-")[0]) || 3,
+              },
+              maximum: {
+                unit: "business_day",
+                value: parseInt(shippingMethod.estimatedDays.split("-")[1]) || 5,
+              },
+            } : {
+              minimum: {
+                unit: "business_day",
+                value: 3,
+              },
+              maximum: {
+                unit: "business_day",
+                value: 5,
+              },
+            },
+          },
+        },
+      ],
+      phone_number_collection: {
+        enabled: false, // Already have phone from customer
       },
       allow_promotion_codes: true,
     };
