@@ -216,7 +216,7 @@ r.get("/confirm", async (req, res, next) => {
 
 r.post("/create-session", async (req, res, next) => {
   try {
-    const { appointmentId, mode } = req.body || {};
+    const { appointmentId, mode, currency: requestedCurrency } = req.body || {};
     let appt = null;
     let service = null;
 
@@ -287,7 +287,12 @@ r.post("/create-session", async (req, res, next) => {
       appt = appt.toObject();
     }
 
-    const currency = (process.env.STRIPE_CURRENCY || "gbp").toLowerCase();
+    // Use requested currency or default to environment/gbp
+    const currency = (
+      requestedCurrency ||
+      process.env.STRIPE_CURRENCY ||
+      "gbp"
+    ).toLowerCase();
     const frontend = process.env.FRONTEND_URL || "http://localhost:5173";
     const depositPct = Number(process.env.STRIPE_DEPOSIT_PERCENT || 0);
 

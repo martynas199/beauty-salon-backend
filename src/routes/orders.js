@@ -265,7 +265,12 @@ router.get("/:id", async (req, res) => {
 router.post("/checkout", async (req, res) => {
   try {
     const stripe = getStripe();
-    const { items, shippingAddress, shippingMethod } = req.body;
+    const {
+      items,
+      shippingAddress,
+      shippingMethod,
+      currency: requestedCurrency,
+    } = req.body;
 
     if (!items || items.length === 0) {
       return res
@@ -364,7 +369,12 @@ router.post("/checkout", async (req, res) => {
       itemsByBeautician.get(beauticianId).push(item);
     }
 
-    const currency = (process.env.STRIPE_CURRENCY || "gbp").toLowerCase();
+    // Use requested currency or default to environment/gbp
+    const currency = (
+      requestedCurrency ||
+      process.env.STRIPE_CURRENCY ||
+      "gbp"
+    ).toLowerCase();
     const frontend = process.env.FRONTEND_URL || "http://localhost:5173";
 
     // Build line items for Stripe
