@@ -396,14 +396,17 @@ router.post("/checkout", async (req, res) => {
             (sum, item) => sum + item.price * item.quantity,
             0
           );
-          
+
           // Validate beautician has Stripe account
-          if (!firstItem.beautician.stripeAccountId || firstItem.beautician.stripeStatus !== "connected") {
+          if (
+            !firstItem.beautician.stripeAccountId ||
+            firstItem.beautician.stripeStatus !== "connected"
+          ) {
             return res.status(400).json({
               error: `Product "${firstItem.title}" belongs to a beautician who hasn't set up payment processing yet. Please contact support.`,
             });
           }
-          
+
           stripeConnectPayments.push({
             beauticianId,
             beauticianStripeAccount: firstItem.beautician.stripeAccountId,
