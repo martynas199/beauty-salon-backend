@@ -448,26 +448,32 @@ router.post("/checkout", async (req, res) => {
               amount: Math.round(shipping * 100),
               currency,
             },
-            display_name: shippingMethod?.name || (shipping === 0 ? "Free Shipping" : "Standard Shipping"),
-            delivery_estimate: shippingMethod?.estimatedDays ? {
-              minimum: {
-                unit: "business_day",
-                value: parseInt(shippingMethod.estimatedDays.split("-")[0]) || 3,
-              },
-              maximum: {
-                unit: "business_day",
-                value: parseInt(shippingMethod.estimatedDays.split("-")[1]) || 5,
-              },
-            } : {
-              minimum: {
-                unit: "business_day",
-                value: 3,
-              },
-              maximum: {
-                unit: "business_day",
-                value: 5,
-              },
-            },
+            display_name:
+              shippingMethod?.name ||
+              (shipping === 0 ? "Free Shipping" : "Standard Shipping"),
+            delivery_estimate: shippingMethod?.estimatedDays
+              ? {
+                  minimum: {
+                    unit: "business_day",
+                    value:
+                      parseInt(shippingMethod.estimatedDays.split("-")[0]) || 3,
+                  },
+                  maximum: {
+                    unit: "business_day",
+                    value:
+                      parseInt(shippingMethod.estimatedDays.split("-")[1]) || 5,
+                  },
+                }
+              : {
+                  minimum: {
+                    unit: "business_day",
+                    value: 3,
+                  },
+                  maximum: {
+                    unit: "business_day",
+                    value: 5,
+                  },
+                },
           },
         },
       ],
