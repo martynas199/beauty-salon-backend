@@ -396,6 +396,14 @@ router.post("/checkout", async (req, res) => {
             (sum, item) => sum + item.price * item.quantity,
             0
           );
+          
+          // Validate beautician has Stripe account
+          if (!firstItem.beautician.stripeAccountId || firstItem.beautician.stripeStatus !== "connected") {
+            return res.status(400).json({
+              error: `Product "${firstItem.title}" belongs to a beautician who hasn't set up payment processing yet. Please contact support.`,
+            });
+          }
+          
           stripeConnectPayments.push({
             beauticianId,
             beauticianStripeAccount: firstItem.beautician.stripeAccountId,
@@ -484,7 +492,10 @@ router.post("/checkout", async (req, res) => {
     };
 
     // If single beautician order, use destination charges so beautician pays Stripe fees
-    if (stripeConnectPayments.length === 1 && stripeConnectPayments[0].beauticianStripeAccount) {
+    if (
+      stripeConnectPayments.length === 1 &&
+      stripeConnectPayments[0].beauticianStripeAccount
+    ) {
       const payment = stripeConnectPayments[0];
       sessionConfig.payment_intent_data = {
         transfer_data: {
