@@ -25,10 +25,22 @@ const VariantSchema = new Schema(
       required: true,
       min: 0,
     },
+    priceEUR: {
+      type: Number,
+      default: null,
+      min: 0,
+      // EUR price for multi-currency support
+    },
     originalPrice: {
       type: Number,
       default: null,
       min: 0,
+    },
+    originalPriceEUR: {
+      type: Number,
+      default: null,
+      min: 0,
+      // Original EUR price (before discount)
     },
     purchasePrice: {
       type: Number,
@@ -112,10 +124,22 @@ const ProductSchema = new Schema(
       default: 0,
       min: 0,
     },
+    priceEUR: {
+      type: Number,
+      default: null,
+      min: 0,
+      // EUR price for multi-currency support
+    },
     originalPrice: {
       type: Number,
       default: null,
       min: 0,
+    },
+    originalPriceEUR: {
+      type: Number,
+      default: null,
+      min: 0,
+      // Original EUR price (before discount)
     },
     purchasePrice: {
       type: Number,

@@ -302,11 +302,19 @@ router.post("/checkout", async (req, res) => {
             .status(400)
             .json({ error: `Variant not found for product: ${product.title}` });
         }
-        price = variant.price;
+        // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
+        price =
+          requestedCurrency === "eur" && variant.priceEUR != null
+            ? variant.priceEUR
+            : variant.price;
         stock = variant.stock;
         size = variant.size;
       } else {
-        price = product.price;
+        // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
+        price =
+          requestedCurrency === "eur" && product.priceEUR != null
+            ? product.priceEUR
+            : product.price;
         stock = product.stock;
         size = product.size;
       }
