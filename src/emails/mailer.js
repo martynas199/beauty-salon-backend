@@ -2,12 +2,11 @@ import nodemailer from "nodemailer";
 
 /**
  * Format currency based on the currency code
- * @param {number} amount - Amount in base units (e.g., pence/cents)
+ * @param {number} amount - Amount in main units (e.g., pounds, euros, dollars)
  * @param {string} currency - Currency code (GBP, EUR, USD)
  * @returns {string} Formatted currency string
  */
 function formatCurrency(amount, currency = "GBP") {
-  const amountInMainUnit = amount / 100;
   const currencyUpper = (currency || "GBP").toUpperCase();
 
   const symbols = {
@@ -17,7 +16,7 @@ function formatCurrency(amount, currency = "GBP") {
   };
 
   const symbol = symbols[currencyUpper] || currencyUpper + " ";
-  return `${symbol}${amountInMainUnit.toFixed(2)}`;
+  return `${symbol}${amount.toFixed(2)}`;
 }
 
 function getTransport() {
