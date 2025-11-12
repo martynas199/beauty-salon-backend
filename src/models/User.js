@@ -71,6 +71,13 @@ const userSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
     },
+    // Wishlist - array of product IDs
+    wishlist: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+      },
+    ],
   },
   {
     timestamps: true,

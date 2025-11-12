@@ -32,6 +32,7 @@ import aboutUsRouter from "./routes/aboutUs.js";
 import analyticsRouter from "./routes/analytics.js";
 import shippingRouter from "./routes/shipping.js";
 import subscriptionsRouter from "./routes/subscriptions.js";
+import wishlistRouter from "./routes/wishlist.js";
 import {
   apiLimiter,
   authLimiter,
@@ -132,6 +133,9 @@ app.use("/api/about-us", aboutUsRouter);
 
 // Customer profile routes (protected)
 app.use("/api/users", usersRouter);
+
+// Wishlist routes (protected)
+app.use("/api/wishlist", wishlistRouter);
 
 // Orders (includes both read and write operations)
 app.use("/api/orders", ordersRouter);
