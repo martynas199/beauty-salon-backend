@@ -336,12 +336,12 @@ router.post("/checkout", async (req, res) => {
     const shipping = shippingMethod?.price ?? (subtotal >= 50 ? 0 : 5.99);
     const total = subtotal + shipping;
 
-    // Determine currency from request or default
-    const orderCurrency = (
+    // Use requested currency or default to environment/gbp
+    const currency = (
       requestedCurrency ||
       process.env.STRIPE_CURRENCY ||
       "gbp"
-    ).toUpperCase();
+    ).toLowerCase();
 
     // Create pending order
     const order = new Order({
@@ -360,7 +360,7 @@ router.post("/checkout", async (req, res) => {
       shipping,
       tax: 0,
       total,
-      currency: orderCurrency,
+      currency: currency.toUpperCase(),
       paymentStatus: "pending",
       orderStatus: "pending",
     });
@@ -376,13 +376,6 @@ router.post("/checkout", async (req, res) => {
       }
       itemsByBeautician.get(beauticianId).push(item);
     }
-
-    // Use requested currency or default to environment/gbp
-    const currency = (
-      requestedCurrency ||
-      process.env.STRIPE_CURRENCY ||
-      "gbp"
-    ).toLowerCase();
     const frontend = process.env.FRONTEND_URL || "http://localhost:5173";
 
     // Build line items for Stripe
