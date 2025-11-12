@@ -1,6 +1,8 @@
 ﻿import { Router } from "express";
 import Beautician from "../models/Beautician.js";
 import Service from "../models/Service.js";
+import Admin from "../models/Admin.js";
+import jwt from "jsonwebtoken";
 import {
   validateCreateBeautician,
   validateUpdateBeautician,
@@ -99,6 +101,73 @@ r.get("/", async (req, res, next) => {
       res.json(docs);
     }
   } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/beauticians/me/working-hours
+ * Update working hours for the logged-in beautician
+ * Requires authentication but not admin
+ */
+r.patch("/me/working-hours", async (req, res, next) => {
+  try {
+    console.log("[Working Hours] Headers:", req.headers.authorization);
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      console.log("[Working Hours] No token found in request");
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+      console.log("[Working Hours] Decoded token:", decoded);
+    } catch (err) {
+      console.log("[Working Hours] Token verification failed:", err.message);
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    // Support both admin tokens (id) and user tokens (userId)
+    const userId = decoded.userId || decoded.id;
+    console.log("[Working Hours] User ID from token:", userId);
+    
+    if (!userId) {
+      console.log("[Working Hours] No userId in token payload");
+      return res.status(401).json({ error: "Invalid token payload" });
+    }
+
+    // Find admin user to get their beauticianId
+    const admin = await Admin.findById(userId);
+    console.log("[Working Hours] Found admin:", admin ? admin._id : "null", "beauticianId:", admin?.beauticianId);
+    
+    if (!admin || !admin.beauticianId) {
+      return res.status(404).json({ error: "No beautician profile associated with this admin account" });
+    }
+
+    // Find beautician by beauticianId
+    const beautician = await Beautician.findById(admin.beauticianId);
+    console.log("[Working Hours] Found beautician:", beautician ? beautician._id : "null");
+    
+    if (!beautician) {
+      return res.status(404).json({ error: "Beautician profile not found" });
+    }
+
+    const { workingHours } = req.body;
+
+    // Validate working hours format
+    if (!Array.isArray(workingHours)) {
+      return res.status(400).json({ error: "workingHours must be an array" });
+    }
+
+    // Update working hours
+    beautician.workingHours = workingHours;
+    await beautician.save();
+
+    console.log("[Working Hours] Successfully updated working hours");
+    res.json(beautician);
+  } catch (err) {
+    console.error("[Working Hours] Error:", err);
     next(err);
   }
 });
