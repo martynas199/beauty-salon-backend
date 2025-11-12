@@ -304,7 +304,7 @@ router.post("/checkout", async (req, res) => {
         }
         // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
         price =
-          requestedCurrency === "eur" && variant.priceEUR != null
+          requestedCurrency?.toUpperCase() === "EUR" && variant.priceEUR != null
             ? variant.priceEUR
             : variant.price;
         stock = variant.stock;
@@ -312,7 +312,7 @@ router.post("/checkout", async (req, res) => {
       } else {
         // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
         price =
-          requestedCurrency === "eur" && product.priceEUR != null
+          requestedCurrency?.toUpperCase() === "EUR" && product.priceEUR != null
             ? product.priceEUR
             : product.price;
         stock = product.stock;
