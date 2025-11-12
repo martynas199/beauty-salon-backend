@@ -1,5 +1,25 @@
 import nodemailer from "nodemailer";
 
+/**
+ * Format currency based on the currency code
+ * @param {number} amount - Amount in base units (e.g., pence/cents)
+ * @param {string} currency - Currency code (GBP, EUR, USD)
+ * @returns {string} Formatted currency string
+ */
+function formatCurrency(amount, currency = "GBP") {
+  const amountInMainUnit = amount / 100;
+  const currencyUpper = (currency || "GBP").toUpperCase();
+
+  const symbols = {
+    GBP: "£",
+    EUR: "€",
+    USD: "$",
+  };
+
+  const symbol = symbols[currencyUpper] || currencyUpper + " ";
+  return `${symbol}${amountInMainUnit.toFixed(2)}`;
+}
+
 function getTransport() {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 587);
@@ -63,10 +83,10 @@ export async function sendCancellationEmails({
 
   const serviceName =
     appointment.serviceId?.name || appointment.variantName || "Service";
-  const currency = policySnapshot?.currency?.toUpperCase() || "GBP";
+  const currency = policySnapshot?.currency || "GBP";
   const hasRefund = refundAmount && refundAmount > 0;
   const refundAmountFormatted = hasRefund
-    ? `£${(refundAmount / 100).toFixed(2)}`
+    ? formatCurrency(refundAmount, currency)
     : null;
 
   const cust = appointment.client?.email;
@@ -265,8 +285,9 @@ export async function sendConfirmationEmail({
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
+  const currency = appointment.currency || "GBP";
   const price = appointment.price
-    ? `£${Number(appointment.price).toFixed(2)}`
+    ? formatCurrency(appointment.price * 100, currency)
     : "";
 
   // Determine payment status and deposit info
@@ -285,10 +306,10 @@ export async function sendConfirmationEmail({
         : "Payment pending";
   } else if (appointment.payment?.mode === "deposit") {
     isDepositPayment = true;
-    // Calculate deposit amount from payment.amountTotal (in pence)
+    // Calculate deposit amount from payment.amountTotal (in pence/cents)
     // Note: amountTotal includes the £0.50 booking fee
-    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
-    bookingFee = platformFee / 100; // Convert to pounds for display
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // in pence/cents
+    bookingFee = platformFee / 100; // Convert to main currency unit for display
     const totalPaid = appointment.payment?.amountTotal
       ? appointment.payment.amountTotal / 100
       : 0;
@@ -337,16 +358,22 @@ Date & Time: ${startTime}
 Price: ${price}
 ${
   isDepositPayment
-    ? `Deposit: £${depositAmount.toFixed(
-        2
-      )}\nBooking Fee: £${bookingFee.toFixed(2)}\nTotal Paid: £${(
-        depositAmount + bookingFee
-      ).toFixed(2)}`
+    ? `Deposit: ${formatCurrency(
+        depositAmount * 100,
+        currency
+      )}\nBooking Fee: ${formatCurrency(
+        bookingFee * 100,
+        currency
+      )}\nTotal Paid: ${formatCurrency(
+        (depositAmount + bookingFee) * 100,
+        currency
+      )}`
     : `Payment: ${paymentStatus}`
 }${
         isDepositPayment && remainingBalance > 0
-          ? `\nRemaining Balance: £${remainingBalance.toFixed(
-              2
+          ? `\nRemaining Balance: ${formatCurrency(
+              remainingBalance * 100,
+              currency
             )} (to be paid at salon)`
           : ""
       }
@@ -376,15 +403,18 @@ Thank you for choosing us!`,
               ? `
           <div style="background-color: #ecfdf5; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #10b981;">
             <p style="margin: 0 0 8px 0; color: #065f46; font-weight: 600; font-size: 14px;">💳 Payment Details</p>
-            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Deposit: <strong>£${depositAmount.toFixed(
-              2
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Deposit: <strong>${formatCurrency(
+              depositAmount * 100,
+              currency
             )}</strong></p>
-            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>£${bookingFee.toFixed(
-              2
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
+              bookingFee * 100,
+              currency
             )}</strong></p>
-            <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: £${(
-              depositAmount + bookingFee
-            ).toFixed(2)}</p>
+            <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: ${formatCurrency(
+              (depositAmount + bookingFee) * 100,
+              currency
+            )}</p>
           </div>
           `
               : `<p style="margin: 8px 0;"><strong>Payment:</strong> ${paymentStatus}</p>`
@@ -394,8 +424,9 @@ Thank you for choosing us!`,
               ? `
           <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #f59e0b;">
             <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">💰 Remaining Balance</p>
-            <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">£${remainingBalance.toFixed(
-              2
+            <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">${formatCurrency(
+              remainingBalance * 100,
+              currency
             )}</p>
             <p style="margin: 5px 0 0 0; color: #b45309; font-size: 13px;">To be paid at the salon</p>
           </div>
@@ -453,9 +484,10 @@ export async function sendOrderConfirmationEmail({ order }) {
   }
 
   const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
-  const totalPrice = `£${Number(order.total || 0).toFixed(2)}`;
-  const shippingCost = `£${Number(order.shipping || 0).toFixed(2)}`;
-  const subtotal = `£${Number(order.subtotal || 0).toFixed(2)}`;
+  const currency = order.currency || "GBP";
+  const totalPrice = formatCurrency(order.total || 0, currency);
+  const shippingCost = formatCurrency(order.shipping || 0, currency);
+  const subtotal = formatCurrency(order.subtotal || 0, currency);
 
   // Build items list
   const itemsText = order.items
@@ -463,7 +495,7 @@ export async function sendOrderConfirmationEmail({ order }) {
       (item) =>
         `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
           item.quantity
-        } - £${(Number(item.price || 0) * item.quantity).toFixed(2)}`
+        } - ${formatCurrency((item.price || 0) * item.quantity, currency)}`
     )
     .join("\n");
 
@@ -492,7 +524,7 @@ export async function sendOrderConfirmationEmail({ order }) {
         ${item.quantity}
       </td>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: #1f2937;">
-        £${(Number(item.price || 0) * item.quantity).toFixed(2)}
+        ${formatCurrency((item.price || 0) * item.quantity, currency)}
       </td>
     </tr>
   `
@@ -675,7 +707,11 @@ export async function sendAdminOrderNotification({ order }) {
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
   const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
-  const totalPrice = `£${(order.totalPrice / 100).toFixed(2)}`;
+  const currency = order.currency || "GBP";
+  const totalPrice = formatCurrency(
+    order.totalPrice || order.total || 0,
+    currency
+  );
 
   const itemsList = order.items
     .map(
