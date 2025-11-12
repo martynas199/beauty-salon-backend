@@ -63,6 +63,11 @@ const ProductSchema = new Schema(
       required: true,
       trim: true,
     },
+    brand: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     description: {
       type: String,
       required: true,
