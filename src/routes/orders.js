@@ -272,6 +272,8 @@ router.post("/checkout", async (req, res) => {
       currency: requestedCurrency,
     } = req.body;
 
+    console.log("[CHECKOUT] Requested currency:", requestedCurrency);
+
     if (!items || items.length === 0) {
       return res
         .status(400)
@@ -350,6 +352,8 @@ router.post("/checkout", async (req, res) => {
       process.env.STRIPE_CURRENCY ||
       "gbp"
     ).toLowerCase();
+
+    console.log("[CHECKOUT] Final currency for Stripe:", currency);
 
     // Create pending order
     const order = new Order({

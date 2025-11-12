@@ -144,6 +144,12 @@ const OrderSchema = new Schema(
       required: true,
       min: 0,
     },
+    currency: {
+      type: String,
+      enum: ["GBP", "EUR", "USD"],
+      default: "GBP",
+      uppercase: true,
+    },
     paymentMethod: {
       type: String,
       enum: ["card", "paypal", "cash"],
