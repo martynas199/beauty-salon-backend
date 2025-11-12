@@ -336,6 +336,13 @@ router.post("/checkout", async (req, res) => {
     const shipping = shippingMethod?.price ?? (subtotal >= 50 ? 0 : 5.99);
     const total = subtotal + shipping;
 
+    // Determine currency from request or default
+    const orderCurrency = (
+      requestedCurrency ||
+      process.env.STRIPE_CURRENCY ||
+      "gbp"
+    ).toUpperCase();
+
     // Create pending order
     const order = new Order({
       items: validatedItems.map((item) => ({
@@ -353,6 +360,7 @@ router.post("/checkout", async (req, res) => {
       shipping,
       tax: 0,
       total,
+      currency: orderCurrency,
       paymentStatus: "pending",
       orderStatus: "pending",
     });
