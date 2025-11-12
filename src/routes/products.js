@@ -39,7 +39,7 @@ router.get("/", async (req, res) => {
       const [products, total] = await Promise.all([
         Product.find(filter)
           .select(
-            "_id title description price originalPrice image category featured active variants"
+            "_id title brand description price originalPrice image category featured active variants beauticianId"
           )
           .sort({ order: 1, createdAt: -1 })
           .skip(skip)
