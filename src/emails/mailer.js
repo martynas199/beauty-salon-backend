@@ -286,7 +286,7 @@ export async function sendConfirmationEmail({
   const beauticianName = beautician?.name || "Our team";
   const currency = appointment.currency || "GBP";
   const price = appointment.price
-    ? formatCurrency(appointment.price * 100, currency)
+    ? formatCurrency(appointment.price, currency)
     : "";
 
   // Determine payment status and deposit info
@@ -358,20 +358,17 @@ Price: ${price}
 ${
   isDepositPayment
     ? `Deposit: ${formatCurrency(
-        depositAmount * 100,
+        depositAmount,
         currency
       )}\nBooking Fee: ${formatCurrency(
-        bookingFee * 100,
+        bookingFee,
         currency
-      )}\nTotal Paid: ${formatCurrency(
-        (depositAmount + bookingFee) * 100,
-        currency
-      )}`
+      )}\nTotal Paid: ${formatCurrency(depositAmount + bookingFee, currency)}`
     : `Payment: ${paymentStatus}`
 }${
         isDepositPayment && remainingBalance > 0
           ? `\nRemaining Balance: ${formatCurrency(
-              remainingBalance * 100,
+              remainingBalance,
               currency
             )} (to be paid at salon)`
           : ""
@@ -403,15 +400,15 @@ Thank you for choosing us!`,
           <div style="background-color: #ecfdf5; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #10b981;">
             <p style="margin: 0 0 8px 0; color: #065f46; font-weight: 600; font-size: 14px;">💳 Payment Details</p>
             <p style="margin: 4px 0; color: #047857; font-size: 14px;">Deposit: <strong>${formatCurrency(
-              depositAmount * 100,
+              depositAmount,
               currency
             )}</strong></p>
             <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
-              bookingFee * 100,
+              bookingFee,
               currency
             )}</strong></p>
             <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: ${formatCurrency(
-              (depositAmount + bookingFee) * 100,
+              depositAmount + bookingFee,
               currency
             )}</p>
           </div>
@@ -424,7 +421,7 @@ Thank you for choosing us!`,
           <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #f59e0b;">
             <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">💰 Remaining Balance</p>
             <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">${formatCurrency(
-              remainingBalance * 100,
+              remainingBalance,
               currency
             )}</p>
             <p style="margin: 5px 0 0 0; color: #b45309; font-size: 13px;">To be paid at the salon</p>

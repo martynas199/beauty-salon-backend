@@ -477,4 +477,40 @@ r.post("/create-session", async (req, res, next) => {
   }
 });
 
+// DELETE /api/checkout/cancel-appointment - Delete unpaid appointment when payment is cancelled
+r.delete("/cancel-appointment/:appointmentId", async (req, res, next) => {
+  try {
+    const { appointmentId } = req.params;
+
+    // Find the appointment
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Only delete if appointment is reserved_unpaid (hasn't been paid)
+    if (appointment.status !== "reserved_unpaid") {
+      return res.status(400).json({
+        error: "Can only delete unpaid appointments",
+        status: appointment.status,
+      });
+    }
+
+    // Delete the appointment to free up the timeslot
+    await Appointment.findByIdAndDelete(appointmentId);
+
+    console.log(
+      `[CHECKOUT CANCEL] Deleted unpaid appointment ${appointmentId}`
+    );
+
+    res.json({
+      success: true,
+      message: "Unpaid appointment deleted successfully",
+    });
+  } catch (err) {
+    console.error("[CHECKOUT CANCEL] Error:", err);
+    next(err);
+  }
+});
+
 export default r;
