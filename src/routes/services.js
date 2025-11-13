@@ -170,9 +170,20 @@ r.get("/:id", async (req, res, next) => {
  */
 r.post("/", requireAdmin, async (req, res, next) => {
   try {
+    console.log("[SERVICE CREATE] Request received");
+    console.log("[SERVICE CREATE] Admin:", {
+      role: req.admin?.role,
+      beauticianId: req.admin?.beauticianId,
+    });
+    console.log(
+      "[SERVICE CREATE] Request body:",
+      JSON.stringify(req.body, null, 2)
+    );
+
     // Validate request body
     const validation = validateCreateService(req.body);
     if (!validation.success) {
+      console.log("[SERVICE CREATE] Validation failed:", validation.errors);
       const errorMessages = validation.errors.map((e) => e.message).join(", ");
       return res.status(400).json({
         error: errorMessages || "Validation failed",
@@ -180,28 +191,45 @@ r.post("/", requireAdmin, async (req, res, next) => {
       });
     }
 
+    console.log(
+      "[SERVICE CREATE] Validation passed. Data:",
+      JSON.stringify(validation.data, null, 2)
+    );
+
     // BEAUTICIAN role: Can only create services for themselves
     if (req.admin.role === "admin" && req.admin.beauticianId) {
+      console.log("[SERVICE CREATE] Checking beautician permissions...");
       // Ensure the beautician is creating a service for themselves
       if (
         validation.data.primaryBeauticianId !==
         req.admin.beauticianId.toString()
       ) {
+        console.log("[SERVICE CREATE] Permission denied: beautician mismatch");
         return res.status(403).json({
           error: "Access denied",
           message: "You can only create services for yourself.",
         });
       }
+      console.log("[SERVICE CREATE] Beautician permissions OK");
     }
 
+    console.log("[SERVICE CREATE] Creating service in database...");
     const created = await Service.create(validation.data);
+    console.log("[SERVICE CREATE] Service created with ID:", created._id);
+
+    console.log("[SERVICE CREATE] Populating service data...");
     const populated = await Service.findById(created._id)
       .populate({ path: "primaryBeauticianId", select: "name email" })
       .populate({ path: "additionalBeauticianIds", select: "name email" })
       .lean();
 
+    console.log(
+      "[SERVICE CREATE] ✓ Success! Returning service:",
+      populated._id
+    );
     res.status(201).json(populated);
   } catch (err) {
+    console.error("[SERVICE CREATE] ✗ Error:", err);
     if (err.code === 11000) {
       return res.status(409).json({
         error: "Service already exists",
