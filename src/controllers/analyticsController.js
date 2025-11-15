@@ -46,29 +46,40 @@ export const getProfitAnalytics = async (req, res) => {
 
     console.log(`[ANALYTICS] Found ${orders.length} paid orders`);
     if (orders.length > 0) {
-      console.log(`[ANALYTICS] Date range: ${orders[orders.length - 1].createdAt} to ${orders[0].createdAt}`);
+      console.log(
+        `[ANALYTICS] Date range: ${orders[orders.length - 1].createdAt} to ${
+          orders[0].createdAt
+        }`
+      );
     }
 
     // Filter by productId if specified
     if (productId) {
       const beforeFilter = orders.length;
-      
+
       // Debug: Log product IDs from orders
       console.log(`[ANALYTICS] Looking for productId: ${productId}`);
       const foundProductIds = new Set();
-      orders.forEach(order => {
-        order.items.forEach(item => {
+      orders.forEach((order) => {
+        order.items.forEach((item) => {
           if (item.productId?._id) {
             foundProductIds.add(item.productId._id.toString());
           }
         });
       });
-      console.log(`[ANALYTICS] Product IDs in orders:`, Array.from(foundProductIds));
-      
-      orders = orders.filter((order) =>
-        order.items.some((item) => item.productId?._id?.toString() === productId)
+      console.log(
+        `[ANALYTICS] Product IDs in orders:`,
+        Array.from(foundProductIds)
       );
-      console.log(`[ANALYTICS] Filtered by productId ${productId}: ${beforeFilter} -> ${orders.length} orders`);
+
+      orders = orders.filter((order) =>
+        order.items.some(
+          (item) => item.productId?._id?.toString() === productId
+        )
+      );
+      console.log(
+        `[ANALYTICS] Filtered by productId ${productId}: ${beforeFilter} -> ${orders.length} orders`
+      );
     }
 
     // Filter by beauticianId if specified
@@ -81,7 +92,9 @@ export const getProfitAnalytics = async (req, res) => {
             item.beauticianId?.toString() === beauticianId
         )
       );
-      console.log(`[ANALYTICS] Filtered by beauticianId ${beauticianId}: ${beforeFilter} -> ${orders.length} orders`);
+      console.log(
+        `[ANALYTICS] Filtered by beauticianId ${beauticianId}: ${beforeFilter} -> ${orders.length} orders`
+      );
     }
 
     // Calculate analytics

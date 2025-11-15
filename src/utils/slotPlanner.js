@@ -199,36 +199,52 @@ export function clampToDay(interval, date, tz) {
  * @param {any} workingHours
  * @param {string} date YYYY-MM-DD
  * @param {{ dayStartOverride?: string, dayEndOverride?: string }} overrides
- * @returns {{ startMin:number, endMin:number, breaks:{startMin:number,endMin:number}[] } | null}
+ * @returns {{ startMin:number, endMin:number, breaks:{startMin:number,endMin:number}[] }[] | null}
  */
 export function buildWorkingWindows(workingHours, date, overrides = {}) {
   const dayOfWeek = dayjs(date).day(); // 0=Sunday, 6=Saturday
   const weekday = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayOfWeek];
 
-  let day = null;
+  let dayEntries = [];
 
   // Handle new array format: [{dayOfWeek: 1, start: "09:00", end: "17:00"}, ...]
+  // Note: There can be multiple entries for the same day (e.g., morning and afternoon shifts)
   if (Array.isArray(workingHours)) {
-    const dayEntry = workingHours.find((wh) => wh.dayOfWeek === dayOfWeek);
-    if (dayEntry && dayEntry.start && dayEntry.end) {
-      day = { start: dayEntry.start, end: dayEntry.end, breaks: [] };
-    }
+    dayEntries = workingHours.filter((wh) => wh.dayOfWeek === dayOfWeek && wh.start && wh.end);
+    console.log(`[SlotPlanner] Array format - Found ${dayEntries.length} entries for dayOfWeek ${dayOfWeek} (${weekday})`);
   }
   // Handle legacy object format: {mon: {start, end, breaks}, tue: ...}
   else if (workingHours && typeof workingHours === "object") {
-    day = workingHours[weekday];
+    const day = workingHours[weekday];
+    console.log(`[SlotPlanner] Legacy format - ${weekday}:`, day);
+    if (day && day.start && day.end) {
+      dayEntries = [day];
+    }
   }
 
-  if (!day || !day.start || !day.end) return null;
+  if (dayEntries.length === 0) {
+    console.log(`[SlotPlanner] No valid working hours for ${date} (${weekday})`);
+    return null;
+  }
 
-  const startMin = hhmmToMinutes(overrides.dayStartOverride || day.start);
-  const endMin = hhmmToMinutes(overrides.dayEndOverride || day.end);
-  if (!(startMin < endMin)) return null;
-  const breaks = (day.breaks || []).map((b) => ({
-    startMin: hhmmToMinutes(b.start),
-    endMin: hhmmToMinutes(b.end),
-  }));
-  return { startMin, endMin, breaks };
+  // Convert each entry to working window format
+  const windows = dayEntries.map(day => {
+    const startMin = hhmmToMinutes(overrides.dayStartOverride || day.start);
+    const endMin = hhmmToMinutes(overrides.dayEndOverride || day.end);
+    const breaks = (day.breaks || []).map((b) => ({
+      startMin: hhmmToMinutes(b.start),
+      endMin: hhmmToMinutes(b.end),
+    }));
+    return { startMin, endMin, breaks };
+  }).filter(w => w.startMin < w.endMin); // Only keep valid windows
+
+  if (windows.length === 0) {
+    console.log(`[SlotPlanner] No valid working windows after filtering for ${date}`);
+    return null;
+  }
+
+  console.log(`[SlotPlanner] Built ${windows.length} working window(s) for ${date}:`, windows);
+  return windows;
 }
 
 /**
@@ -315,11 +331,11 @@ export function computeSlotsForBeautician(params) {
   } = p;
   if (beautician.active === false) return [];
 
-  const window = buildWorkingWindows(beautician.workingHours, date, {
+  const windows = buildWorkingWindows(beautician.workingHours, date, {
     dayStartOverride,
     dayEndOverride,
   });
-  if (!window) return [];
+  if (!windows || windows.length === 0) return [];
 
   const totalMin = totalBlockMin(service);
   const blocks = buildBlockingIntervals({
@@ -330,35 +346,40 @@ export function computeSlotsForBeautician(params) {
     extraBlackouts,
   });
 
-  const out = [];
-  let startMin = roundUpToStep(window.startMin, stepMin);
-  const latestStart = window.endMin - totalMin;
-
   // Get current time in the salon timezone to filter past slots
   const now = dayjs().tz(tz);
   const isToday = now.format("YYYY-MM-DD") === date;
 
-  for (let m = startMin; m <= latestStart; m += stepMin) {
-    // Skip if slot overlaps any break
-    const overlapsBreak = (window.breaks || []).some(
-      (br) => m < br.endMin && m + totalMin > br.startMin
-    );
-    if (overlapsBreak) continue;
+  const out = [];
+  
+  // Process each working window (e.g., morning and afternoon shifts)
+  for (const window of windows) {
+    let startMin = roundUpToStep(window.startMin, stepMin);
+    const latestStart = window.endMin - totalMin;
 
-    const slotIv = toDateInterval(date, tz, m, m + totalMin);
+    for (let m = startMin; m <= latestStart; m += stepMin) {
+      // Skip if slot overlaps any break
+      const overlapsBreak = (window.breaks || []).some(
+        (br) => m < br.endMin && m + totalMin > br.startMin
+      );
+      if (overlapsBreak) continue;
 
-    // Skip past slots for today
-    if (isToday && slotIv.start <= now.toDate()) continue;
+      const slotIv = toDateInterval(date, tz, m, m + totalMin);
 
-    // Check against blocking intervals (appointments + time off + extra)
-    if (blocks.some((b) => intervalsOverlap(slotIv, b))) continue;
+      // Skip past slots for today
+      if (isToday && slotIv.start <= now.toDate()) continue;
 
-    out.push({
-      startISO: slotIv.start.toISOString(),
-      endISO: slotIv.end.toISOString(),
-      beauticianId: beautician._id ? String(beautician._id) : undefined,
-    });
+      // Check against blocking intervals (appointments + time off + extra)
+      if (blocks.some((b) => intervalsOverlap(slotIv, b))) continue;
+
+      out.push({
+        startISO: slotIv.start.toISOString(),
+        endISO: slotIv.end.toISOString(),
+        beauticianId: beautician._id ? String(beautician._id) : undefined,
+      });
+    }
   }
+  
   return out;
 }
 

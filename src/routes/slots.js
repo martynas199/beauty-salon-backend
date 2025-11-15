@@ -249,6 +249,16 @@ r.get("/", async (req, res) => {
   } else {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
+    
+    console.log('[Slots] Fetching slots for:', {
+      beauticianId,
+      beauticianName: b.name,
+      serviceId,
+      variantName,
+      date,
+      workingHours: b.workingHours
+    });
+    
     const appts = await Appointment.find({
       beauticianId,
       start: {
@@ -257,6 +267,9 @@ r.get("/", async (req, res) => {
       },
       status: { $ne: "cancelled" },
     }).lean();
+    
+    console.log(`[Slots] Found ${appts.length} appointments for ${date}`);
+    
     slots = computeSlotsForBeautician({
       date,
       salonTz,
@@ -269,6 +282,8 @@ r.get("/", async (req, res) => {
         status: a.status,
       })),
     });
+    
+    console.log(`[Slots] Generated ${slots.length} available slots for ${date}`);
   }
   res.json({ slots });
 });
