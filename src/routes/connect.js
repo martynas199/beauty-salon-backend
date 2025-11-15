@@ -40,6 +40,21 @@ router.post("/onboard", async (req, res) => {
 
     const stripe = getStripe();
 
+    // Check if existing account ID is valid (handles test->live mode migration)
+    if (stripeAccountId) {
+      try {
+        await stripe.accounts.retrieve(stripeAccountId);
+      } catch (error) {
+        // Account doesn't exist in current mode (likely test account with live keys)
+        console.log(`Clearing invalid Stripe account ID for beautician ${beauticianId}`);
+        stripeAccountId = null;
+        beautician.stripeAccountId = null;
+        beautician.stripeStatus = "not_connected";
+        beautician.stripeOnboardingCompleted = false;
+        await beautician.save();
+      }
+    }
+
     // Create new Stripe Connect account if doesn't exist
     if (!stripeAccountId) {
       const account = await stripe.accounts.create({
@@ -110,7 +125,24 @@ router.get("/status/:beauticianId", async (req, res) => {
     const stripe = getStripe();
 
     // Fetch account details from Stripe
-    const account = await stripe.accounts.retrieve(beautician.stripeAccountId);
+    let account;
+    try {
+      account = await stripe.accounts.retrieve(beautician.stripeAccountId);
+    } catch (error) {
+      // Account doesn't exist (likely test account with live keys)
+      console.log(`Invalid Stripe account ID for beautician ${beauticianId}, clearing...`);
+      beautician.stripeAccountId = null;
+      beautician.stripeStatus = "not_connected";
+      beautician.stripeOnboardingCompleted = false;
+      await beautician.save();
+      
+      return res.json({
+        status: "not_connected",
+        connected: false,
+        stripeAccountId: null,
+        message: "Previous account was invalid and has been cleared. Please reconnect.",
+      });
+    }
 
     // Check if onboarding is complete
     const isComplete = account.details_submitted && account.charges_enabled;
