@@ -23,9 +23,14 @@ export const getProfitAnalytics = async (req, res) => {
         matchFilters.createdAt.$gte = new Date(startDate);
       }
       if (endDate) {
-        matchFilters.createdAt.$lte = new Date(endDate);
+        // Set to end of day (23:59:59.999) instead of start of day
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        matchFilters.createdAt.$lte = endOfDay;
       }
     }
+
+    console.log(`[ANALYTICS] Query filters:`, JSON.stringify(matchFilters));
 
     // Get orders with populated product data
     let orders = await Order.find(matchFilters)
@@ -39,22 +44,44 @@ export const getProfitAnalytics = async (req, res) => {
       })
       .sort({ createdAt: -1 });
 
+    console.log(`[ANALYTICS] Found ${orders.length} paid orders`);
+    if (orders.length > 0) {
+      console.log(`[ANALYTICS] Date range: ${orders[orders.length - 1].createdAt} to ${orders[0].createdAt}`);
+    }
+
     // Filter by productId if specified
     if (productId) {
+      const beforeFilter = orders.length;
+      
+      // Debug: Log product IDs from orders
+      console.log(`[ANALYTICS] Looking for productId: ${productId}`);
+      const foundProductIds = new Set();
+      orders.forEach(order => {
+        order.items.forEach(item => {
+          if (item.productId?._id) {
+            foundProductIds.add(item.productId._id.toString());
+          }
+        });
+      });
+      console.log(`[ANALYTICS] Product IDs in orders:`, Array.from(foundProductIds));
+      
       orders = orders.filter((order) =>
-        order.items.some((item) => item.productId._id.toString() === productId)
+        order.items.some((item) => item.productId?._id?.toString() === productId)
       );
+      console.log(`[ANALYTICS] Filtered by productId ${productId}: ${beforeFilter} -> ${orders.length} orders`);
     }
 
     // Filter by beauticianId if specified
     if (beauticianId) {
+      const beforeFilter = orders.length;
       orders = orders.filter((order) =>
         order.items.some(
           (item) =>
-            item.productId.beauticianId?.toString() === beauticianId ||
+            item.productId?.beauticianId?.toString() === beauticianId ||
             item.beauticianId?.toString() === beauticianId
         )
       );
+      console.log(`[ANALYTICS] Filtered by beauticianId ${beauticianId}: ${beforeFilter} -> ${orders.length} orders`);
     }
 
     // Calculate analytics
