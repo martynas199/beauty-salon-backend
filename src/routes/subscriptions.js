@@ -30,9 +30,22 @@ router.get("/status", async (req, res) => {
     }
 
     // Fetch latest subscription data from Stripe
-    const subscription = await stripe.subscriptions.retrieve(
-      subscriptionDoc.stripeSubscriptionId
-    );
+    let subscription;
+    try {
+      subscription = await stripe.subscriptions.retrieve(
+        subscriptionDoc.stripeSubscriptionId
+      );
+    } catch (error) {
+      // Subscription doesn't exist in current mode (test vs live)
+      console.log(
+        `Invalid subscription ID, clearing: ${subscriptionDoc.stripeSubscriptionId}`
+      );
+      await Subscription.deleteOne({ salonId });
+      return res.status(404).json({
+        error: "No subscription found",
+        message: "Previous subscription was invalid and has been cleared.",
+      });
+    }
 
     // Update database with latest info
     subscriptionDoc.status = subscription.status;
@@ -249,7 +262,23 @@ router.post("/create-checkout", async (req, res) => {
     const existingSubscription = await Subscription.findOne({ salonId });
 
     if (existingSubscription?.stripeCustomerId) {
-      customerId = existingSubscription.stripeCustomerId;
+      // Verify customer exists in current Stripe mode
+      try {
+        await stripe.customers.retrieve(existingSubscription.stripeCustomerId);
+        customerId = existingSubscription.stripeCustomerId;
+      } catch (error) {
+        // Customer doesn't exist in current mode (test vs live)
+        console.log(
+          `Invalid customer ID, creating new: ${existingSubscription.stripeCustomerId}`
+        );
+        const customer = await stripe.customers.create({
+          metadata: { salonId },
+        });
+        customerId = customer.id;
+
+        // Clear old subscription data
+        await Subscription.deleteOne({ salonId });
+      }
     } else {
       // Create new customer
       const customer = await stripe.customers.create({

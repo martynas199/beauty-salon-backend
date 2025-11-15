@@ -46,7 +46,9 @@ router.post("/onboard", async (req, res) => {
         await stripe.accounts.retrieve(stripeAccountId);
       } catch (error) {
         // Account doesn't exist in current mode (likely test account with live keys)
-        console.log(`Clearing invalid Stripe account ID for beautician ${beauticianId}`);
+        console.log(
+          `Clearing invalid Stripe account ID for beautician ${beauticianId}`
+        );
         stripeAccountId = null;
         beautician.stripeAccountId = null;
         beautician.stripeStatus = "not_connected";
@@ -130,17 +132,20 @@ router.get("/status/:beauticianId", async (req, res) => {
       account = await stripe.accounts.retrieve(beautician.stripeAccountId);
     } catch (error) {
       // Account doesn't exist (likely test account with live keys)
-      console.log(`Invalid Stripe account ID for beautician ${beauticianId}, clearing...`);
+      console.log(
+        `Invalid Stripe account ID for beautician ${beauticianId}, clearing...`
+      );
       beautician.stripeAccountId = null;
       beautician.stripeStatus = "not_connected";
       beautician.stripeOnboardingCompleted = false;
       await beautician.save();
-      
+
       return res.json({
         status: "not_connected",
         connected: false,
         stripeAccountId: null,
-        message: "Previous account was invalid and has been cleared. Please reconnect.",
+        message:
+          "Previous account was invalid and has been cleared. Please reconnect.",
       });
     }
 
