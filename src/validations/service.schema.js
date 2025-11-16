@@ -50,6 +50,7 @@ const baseServiceSchema = z.object({
   image: imageSchema,
   gallery: z.array(galleryImageSchema).optional(),
   active: z.boolean().default(true),
+  priceVaries: z.boolean().default(false),
 });
 
 // Create service schema (POST)
