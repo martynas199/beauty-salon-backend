@@ -105,12 +105,10 @@ router.get("/confirm-checkout", async (req, res) => {
     order.stripePaymentIntentId =
       session.payment_intent?.id || session.payment_intent;
 
-    // Process Stripe Connect transfers for beautician-owned products
-    // Note: For single-beautician orders, destination charges handle payment automatically
-    // Only create transfers for multi-beautician orders
+    // Process Stripe Connect payment for beautician-owned products
+    // For destination charges, payment is automatically sent to beautician
+    // We only need to update the payment status and beautician earnings
     if (order.stripeConnectPayments && order.stripeConnectPayments.length > 0) {
-      const needsTransfers = order.stripeConnectPayments.length > 1;
-
       for (const payment of order.stripeConnectPayments) {
         const beautician = await Beautician.findById(payment.beauticianId);
 
@@ -120,58 +118,30 @@ router.get("/confirm-checkout", async (req, res) => {
           beautician.stripeStatus === "connected"
         ) {
           try {
-            // For single-beautician orders, destination charge already handled payment
-            if (!needsTransfers) {
-              payment.status = "succeeded";
-              payment.paymentIntentId =
-                session.payment_intent?.id || session.payment_intent;
+            // Destination charge: payment already sent directly to beautician
+            // Beautician pays all Stripe fees, platform pays nothing
+            payment.status = "succeeded";
+            payment.paymentIntentId =
+              session.payment_intent?.id || session.payment_intent;
 
-              // Update beautician earnings
-              await Beautician.findByIdAndUpdate(beautician._id, {
-                $inc: { totalEarnings: payment.amount },
-              });
+            // Update beautician earnings
+            await Beautician.findByIdAndUpdate(beautician._id, {
+              $inc: { totalEarnings: payment.amount },
+            });
 
-              console.log(
-                `[ORDER CONFIRM] Single-beautician order: destination charge handled payment for ${beautician._id}`
-              );
-            } else {
-              // For multi-beautician orders, create separate transfers
-              const transfer = await stripe.transfers.create({
-                amount: Math.round(payment.amount * 100), // Convert to pence
-                currency: "gbp",
-                destination: beautician.stripeAccountId,
-                transfer_group: `ORDER_${order._id}`,
-                metadata: {
-                  orderId: String(order._id),
-                  beauticianId: String(beautician._id),
-                  type: "product_sale",
-                },
-              });
-
-              payment.transferId = transfer.id;
-              payment.status = "succeeded";
-              payment.paymentIntentId =
-                session.payment_intent?.id || session.payment_intent;
-
-              // Update beautician earnings
-              await Beautician.findByIdAndUpdate(beautician._id, {
-                $inc: { totalEarnings: payment.amount },
-              });
-
-              console.log(
-                `[ORDER CONFIRM] Transfer created for beautician ${beautician._id}: ${transfer.id}`
-              );
-            }
+            console.log(
+              `[PRODUCT ORDER] Direct payment processed for beautician ${beautician._id} - amount: £${payment.amount}`
+            );
           } catch (error) {
             console.error(
-              `[ORDER CONFIRM] Payment processing failed for beautician ${beautician._id}:`,
+              `[PRODUCT ORDER] Payment processing failed for beautician ${beautician._id}:`,
               error
             );
             payment.status = "failed";
           }
         } else {
           console.log(
-            `[ORDER CONFIRM] Beautician ${payment.beauticianId} not connected to Stripe`
+            `[PRODUCT ORDER] Beautician ${payment.beauticianId} not connected to Stripe`
           );
           payment.status = "failed";
         }
@@ -294,6 +264,13 @@ router.post("/checkout", async (req, res) => {
           .json({ error: `Product not found: ${item.productId}` });
       }
 
+      // Security: Validate beautician ownership
+      if (!product.beauticianId) {
+        return res.status(400).json({
+          error: `Product "${product.title}" is not assigned to a beautician`,
+        });
+      }
+
       let variant = null;
       let price, stock, size;
 
@@ -304,7 +281,7 @@ router.post("/checkout", async (req, res) => {
             .status(400)
             .json({ error: `Variant not found for product: ${product.title}` });
         }
-        // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
+        // Security: Use actual price from database, ignore client-provided price
         price =
           requestedCurrency?.toUpperCase() === "EUR" && variant.priceEUR != null
             ? variant.priceEUR
@@ -312,7 +289,7 @@ router.post("/checkout", async (req, res) => {
         stock = variant.stock;
         size = variant.size;
       } else {
-        // Use EUR price if currency is EUR and priceEUR exists, otherwise use GBP price
+        // Security: Use actual price from database, ignore client-provided price
         price =
           requestedCurrency?.toUpperCase() === "EUR" && product.priceEUR != null
             ? product.priceEUR
@@ -321,9 +298,33 @@ router.post("/checkout", async (req, res) => {
         size = product.size;
       }
 
+      // Security: Validate quantity is positive integer
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        return res.status(400).json({
+          error: `Invalid quantity for ${product.title}`,
+        });
+      }
+
+      // Security: Validate price is valid
+      if (typeof price !== "number" || price < 0) {
+        return res.status(400).json({
+          error: `Invalid price for ${product.title}`,
+        });
+      }
+
       if (stock < item.quantity) {
         return res.status(400).json({
           error: `Insufficient stock for ${product.title}. Available: ${stock}, Requested: ${item.quantity}`,
+        });
+      }
+
+      // Security: Validate beautician has connected Stripe account
+      if (
+        !product.beauticianId.stripeAccountId ||
+        product.beauticianId.stripeStatus !== "connected"
+      ) {
+        return res.status(400).json({
+          error: `Product "${product.title}" belongs to a beautician who hasn't set up payment processing yet. Please contact support.`,
         });
       }
 
@@ -332,10 +333,10 @@ router.post("/checkout", async (req, res) => {
         variantId: item.variantId || null,
         title: product.title,
         size: size,
-        price: price,
+        price: price, // Always use database price, never client-provided
         quantity: item.quantity,
         image: product.image?.url || product.images?.[0]?.url || "",
-        beauticianId: product.beauticianId?._id || null,
+        beauticianId: product.beauticianId._id,
         beautician: product.beauticianId,
       });
 
@@ -382,12 +383,21 @@ router.post("/checkout", async (req, res) => {
     // Group items by beautician for Stripe Connect
     const itemsByBeautician = new Map();
     for (const item of validatedItems) {
-      const beauticianId = item.beauticianId?.toString() || "platform";
+      const beauticianId = item.beauticianId.toString();
       if (!itemsByBeautician.has(beauticianId)) {
         itemsByBeautician.set(beauticianId, []);
       }
       itemsByBeautician.get(beauticianId).push(item);
     }
+
+    // Security: Enforce single beautician per order
+    if (itemsByBeautician.size > 1) {
+      return res.status(400).json({
+        error:
+          "Cannot checkout with products from multiple beauticians. Please complete separate orders for each beautician.",
+      });
+    }
+
     const frontend = process.env.FRONTEND_URL || "http://localhost:5173";
 
     // Build line items for Stripe
@@ -410,34 +420,19 @@ router.post("/checkout", async (req, res) => {
         });
       }
 
-      // Track expected payments for beautician-owned products
-      if (beauticianId !== "platform") {
-        // Get beautician info from first item in this group
-        const firstItem = items[0];
-        if (firstItem.beautician) {
-          const itemsTotal = items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-          );
+      // Track payment for beautician-owned products
+      const firstItem = items[0];
+      const itemsTotal = items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
 
-          // Validate beautician has Stripe account
-          if (
-            !firstItem.beautician.stripeAccountId ||
-            firstItem.beautician.stripeStatus !== "connected"
-          ) {
-            return res.status(400).json({
-              error: `Product "${firstItem.title}" belongs to a beautician who hasn't set up payment processing yet. Please contact support.`,
-            });
-          }
-
-          stripeConnectPayments.push({
-            beauticianId,
-            beauticianStripeAccount: firstItem.beautician.stripeAccountId,
-            amount: itemsTotal,
-            status: "pending",
-          });
-        }
-      }
+      stripeConnectPayments.push({
+        beauticianId,
+        beauticianStripeAccount: firstItem.beautician.stripeAccountId,
+        amount: itemsTotal,
+        status: "pending",
+      });
     }
 
     // Note: Shipping is now handled via shipping_options in Stripe Checkout
@@ -461,8 +456,31 @@ router.post("/checkout", async (req, res) => {
     });
 
     // Create Stripe Checkout session
-    // For single-beautician orders, use destination charges (beautician pays fees)
-    // For multi-beautician orders, use transfers after payment (platform pays fees)
+    // IMPORTANT: For product orders, payments go directly to beauticians
+    // - Single beautician: destination charge (beautician pays ALL fees)
+    // - Multiple beauticians: RESTRICT to single beautician per order
+    // - NO application_fee_amount for products (no platform fee)
+    // - NO transfers (avoid platform paying fees)
+
+    // Validate single beautician per order
+    if (stripeConnectPayments.length > 1) {
+      return res.status(400).json({
+        error:
+          "Cannot checkout with products from multiple beauticians. Please complete separate orders for each beautician.",
+      });
+    }
+
+    // Validate beautician Stripe account
+    if (stripeConnectPayments.length === 1) {
+      const payment = stripeConnectPayments[0];
+      if (!payment.beauticianStripeAccount) {
+        return res.status(400).json({
+          error:
+            "Product owner has not set up payment processing. Please contact support.",
+        });
+      }
+    }
+
     const sessionConfig = {
       mode: "payment",
       client_reference_id: String(order._id),
@@ -517,7 +535,8 @@ router.post("/checkout", async (req, res) => {
       allow_promotion_codes: true,
     };
 
-    // If single beautician order, use destination charges so beautician pays Stripe fees
+    // For product orders: ALWAYS use destination charges
+    // This ensures beautician pays ALL Stripe fees (no platform fees involved)
     if (
       stripeConnectPayments.length === 1 &&
       stripeConnectPayments[0].beauticianStripeAccount
@@ -527,7 +546,17 @@ router.post("/checkout", async (req, res) => {
         transfer_data: {
           destination: payment.beauticianStripeAccount,
         },
+        // NO application_fee_amount - this is a product sale, no platform fee
+        metadata: {
+          orderId: String(order._id),
+          beauticianId: String(payment.beauticianId),
+          type: "product_direct_payment",
+        },
       };
+
+      console.log(
+        `[PRODUCT CHECKOUT] Direct payment to beautician ${payment.beauticianId} - beautician pays all Stripe fees`
+      );
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
@@ -773,12 +802,14 @@ router.post("/:id/refund", async (req, res) => {
     }
 
     // Create Stripe refund
+    // For product orders with destination charges, use reverse_transfer
     const refund = await stripe.refunds.create({
       payment_intent: order.stripePaymentIntentId,
-      reverse_transfer: true, // Reverse transfers to beauticians
+      reverse_transfer: true, // Return money from beautician to customer
       metadata: {
         orderId: String(order._id),
         reason: reason || "Customer request",
+        type: "product_order_refund",
       },
     });
 
@@ -824,6 +855,45 @@ router.post("/:id/refund", async (req, res) => {
     res.json({ success: true, order, refund });
   } catch (error) {
     console.error("Error refunding order:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/orders/:id - Delete an order (admin only)
+router.delete("/:id", async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Restore stock if order was not already cancelled/refunded
+    if (!["cancelled", "refunded"].includes(order.orderStatus)) {
+      for (const item of order.items) {
+        const product = await Product.findById(item.productId);
+        if (product) {
+          if (item.variantId && product.variants) {
+            const variant = product.variants.id(item.variantId);
+            if (variant) {
+              variant.stock += item.quantity;
+            }
+          } else {
+            product.stock += item.quantity;
+          }
+          await product.save();
+        }
+      }
+    }
+
+    await Order.findByIdAndDelete(req.params.id);
+
+    console.log(`[ORDER DELETE] Order ${order._id} (${order.orderNumber}) deleted`);
+    res.json({ 
+      success: true, 
+      message: `Order ${order.orderNumber} deleted successfully` 
+    });
+  } catch (error) {
+    console.error("Error deleting order:", error);
     res.status(500).json({ error: error.message });
   }
 });

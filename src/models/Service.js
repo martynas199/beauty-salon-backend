@@ -36,6 +36,7 @@ const ServiceSchema = new mongoose.Schema(
     price: Number,
     durationMin: Number,
     active: { type: Boolean, default: true, index: true }, // Index for filtering
+    priceVaries: { type: Boolean, default: false }, // Indicates if price varies
     image: {
       provider: String,
       id: String,

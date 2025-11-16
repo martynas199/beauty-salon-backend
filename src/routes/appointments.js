@@ -445,4 +445,31 @@ r.patch("/:id", async (req, res) => {
   }
 });
 
+// Delete all appointments for a specific beautician
+r.delete("/beautician/:beauticianId", async (req, res) => {
+  try {
+    const { beauticianId } = req.params;
+
+    // Verify beautician exists
+    const beautician = await Beautician.findById(beauticianId);
+    if (!beautician) {
+      return res.status(404).json({ error: "Beautician not found" });
+    }
+
+    // Delete all appointments for this beautician
+    const result = await Appointment.deleteMany({ beauticianId });
+
+    res.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Deleted ${result.deletedCount} appointment(s) for ${beautician.name}`,
+    });
+  } catch (err) {
+    console.error("delete_beautician_appointments_err", err);
+    res.status(400).json({
+      error: err.message || "Failed to delete appointments",
+    });
+  }
+});
+
 export default r;
