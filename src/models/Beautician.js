@@ -30,8 +30,22 @@ const BeauticianSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     color: { type: String, default: "#3B82F6" }, // Calendar color
 
-    // Admin system working hours (array format)
+    // Admin system working hours (array format) - default weekly schedule
     workingHours: [WorkingHoursSchema],
+
+    // Custom schedule for specific dates (overrides default weekly schedule)
+    // Format: { "2025-12-05": [{ start: "09:00", end: "12:00" }], "2025-12-25": [] }
+    customSchedule: {
+      type: Map,
+      of: [
+        {
+          start: String,
+          end: String,
+          _id: false,
+        },
+      ],
+      default: {},
+    },
 
     // Legacy working hours (object format) - kept for backward compatibility
     legacyWorkingHours: {

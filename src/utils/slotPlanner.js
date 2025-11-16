@@ -52,6 +52,9 @@ const BeauticianSchema = z.object({
   _id: z.any(),
   active: z.boolean().optional().default(true),
   workingHours: z.union([WorkingHoursSchema, WorkingHoursArraySchema]), // Accept both formats
+  customSchedule: z
+    .record(z.array(z.object({ start: HHMM, end: HHMM })))
+    .optional(), // Custom date-specific schedule
   timeOff: z.array(TimeOffSchema).optional().default([]),
 });
 
@@ -195,25 +198,47 @@ export function clampToDay(interval, date, tz) {
 
 /**
  * Build working windows after applying optional overrides and excluding missing days.
+ * Checks customSchedule first (date-specific), then falls back to default weekly schedule.
  * Returned as minute offsets from day start.
- * @param {any} workingHours
- * @param {string} date YYYY-MM-DD
+ * @param {any} workingHours - Default weekly schedule
+ * @param {string} date - YYYY-MM-DD
  * @param {{ dayStartOverride?: string, dayEndOverride?: string }} overrides
+ * @param {Object} customSchedule - Optional date-specific schedule { "2025-12-05": [{ start, end }] }
  * @returns {{ startMin:number, endMin:number, breaks:{startMin:number,endMin:number}[] }[] | null}
  */
-export function buildWorkingWindows(workingHours, date, overrides = {}) {
+export function buildWorkingWindows(
+  workingHours,
+  date,
+  overrides = {},
+  customSchedule = {}
+) {
   const dayOfWeek = dayjs(date).day(); // 0=Sunday, 6=Saturday
   const weekday = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayOfWeek];
 
+  console.log(`[buildWorkingWindows] Called for ${date}`, {
+    hasCustomSchedule: !!customSchedule,
+    customScheduleKeys: customSchedule ? Object.keys(customSchedule) : [],
+    customScheduleForDate: customSchedule ? customSchedule[date] : undefined,
+  });
+
   let dayEntries = [];
 
-  // Handle new array format: [{dayOfWeek: 1, start: "09:00", end: "17:00"}, ...]
-  // Note: There can be multiple entries for the same day (e.g., morning and afternoon shifts)
-  if (Array.isArray(workingHours)) {
-    dayEntries = workingHours.filter((wh) => wh.dayOfWeek === dayOfWeek && wh.start && wh.end);
-    console.log(`[SlotPlanner] Array format - Found ${dayEntries.length} entries for dayOfWeek ${dayOfWeek} (${weekday})`);
+  // Priority 1: Check for custom schedule for this specific date
+  if (customSchedule && customSchedule[date]) {
+    dayEntries = customSchedule[date].filter((slot) => slot.start && slot.end);
+    console.log(`[SlotPlanner] Custom schedule found for ${date}:`, dayEntries);
   }
-  // Handle legacy object format: {mon: {start, end, breaks}, tue: ...}
+  // Priority 2: Handle new array format: [{dayOfWeek: 1, start: "09:00", end: "17:00"}, ...]
+  // Note: There can be multiple entries for the same day (e.g., morning and afternoon shifts)
+  else if (Array.isArray(workingHours)) {
+    dayEntries = workingHours.filter(
+      (wh) => wh.dayOfWeek === dayOfWeek && wh.start && wh.end
+    );
+    console.log(
+      `[SlotPlanner] Array format - Found ${dayEntries.length} entries for dayOfWeek ${dayOfWeek} (${weekday})`
+    );
+  }
+  // Priority 3: Handle legacy object format: {mon: {start, end, breaks}, tue: ...}
   else if (workingHours && typeof workingHours === "object") {
     const day = workingHours[weekday];
     console.log(`[SlotPlanner] Legacy format - ${weekday}:`, day);
@@ -223,27 +248,36 @@ export function buildWorkingWindows(workingHours, date, overrides = {}) {
   }
 
   if (dayEntries.length === 0) {
-    console.log(`[SlotPlanner] No valid working hours for ${date} (${weekday})`);
+    console.log(
+      `[SlotPlanner] No valid working hours for ${date} (${weekday})`
+    );
     return null;
   }
 
   // Convert each entry to working window format
-  const windows = dayEntries.map(day => {
-    const startMin = hhmmToMinutes(overrides.dayStartOverride || day.start);
-    const endMin = hhmmToMinutes(overrides.dayEndOverride || day.end);
-    const breaks = (day.breaks || []).map((b) => ({
-      startMin: hhmmToMinutes(b.start),
-      endMin: hhmmToMinutes(b.end),
-    }));
-    return { startMin, endMin, breaks };
-  }).filter(w => w.startMin < w.endMin); // Only keep valid windows
+  const windows = dayEntries
+    .map((day) => {
+      const startMin = hhmmToMinutes(overrides.dayStartOverride || day.start);
+      const endMin = hhmmToMinutes(overrides.dayEndOverride || day.end);
+      const breaks = (day.breaks || []).map((b) => ({
+        startMin: hhmmToMinutes(b.start),
+        endMin: hhmmToMinutes(b.end),
+      }));
+      return { startMin, endMin, breaks };
+    })
+    .filter((w) => w.startMin < w.endMin); // Only keep valid windows
 
   if (windows.length === 0) {
-    console.log(`[SlotPlanner] No valid working windows after filtering for ${date}`);
+    console.log(
+      `[SlotPlanner] No valid working windows after filtering for ${date}`
+    );
     return null;
   }
 
-  console.log(`[SlotPlanner] Built ${windows.length} working window(s) for ${date}:`, windows);
+  console.log(
+    `[SlotPlanner] Built ${windows.length} working window(s) for ${date}:`,
+    windows
+  );
   return windows;
 }
 
@@ -331,10 +365,28 @@ export function computeSlotsForBeautician(params) {
   } = p;
   if (beautician.active === false) return [];
 
-  const windows = buildWorkingWindows(beautician.workingHours, date, {
-    dayStartOverride,
-    dayEndOverride,
-  });
+  console.log(
+    "[computeSlotsForBeautician] beautician.customSchedule:",
+    beautician.customSchedule
+  );
+  console.log(
+    "[computeSlotsForBeautician] type:",
+    typeof beautician.customSchedule
+  );
+  console.log(
+    "[computeSlotsForBeautician] is null/undefined?",
+    beautician.customSchedule == null
+  );
+
+  const windows = buildWorkingWindows(
+    beautician.workingHours,
+    date,
+    {
+      dayStartOverride,
+      dayEndOverride,
+    },
+    beautician.customSchedule || {} // Pass custom schedule if it exists
+  );
   if (!windows || windows.length === 0) return [];
 
   const totalMin = totalBlockMin(service);
@@ -351,7 +403,7 @@ export function computeSlotsForBeautician(params) {
   const isToday = now.format("YYYY-MM-DD") === date;
 
   const out = [];
-  
+
   // Process each working window (e.g., morning and afternoon shifts)
   for (const window of windows) {
     let startMin = roundUpToStep(window.startMin, stepMin);
@@ -379,7 +431,7 @@ export function computeSlotsForBeautician(params) {
       });
     }
   }
-  
+
   return out;
 }
 

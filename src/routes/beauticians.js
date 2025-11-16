@@ -84,6 +84,13 @@ r.get("/", async (req, res, next) => {
       .sort({ name: 1 })
       .lean();
 
+    // Convert Map to plain object for customSchedule (if it's still a Map)
+    docs.forEach((doc) => {
+      if (doc.customSchedule && doc.customSchedule instanceof Map) {
+        doc.customSchedule = Object.fromEntries(doc.customSchedule);
+      }
+    });
+
     // Return paginated response if page param is used
     if (req.query.page) {
       res.json({
@@ -131,7 +138,7 @@ r.patch("/me/working-hours", async (req, res, next) => {
     // Support both admin tokens (id) and user tokens (userId)
     const userId = decoded.userId || decoded.id;
     console.log("[Working Hours] User ID from token:", userId);
-    
+
     if (!userId) {
       console.log("[Working Hours] No userId in token payload");
       return res.status(401).json({ error: "Invalid token payload" });
@@ -139,16 +146,28 @@ r.patch("/me/working-hours", async (req, res, next) => {
 
     // Find admin user to get their beauticianId
     const admin = await Admin.findById(userId);
-    console.log("[Working Hours] Found admin:", admin ? admin._id : "null", "beauticianId:", admin?.beauticianId);
-    
+    console.log(
+      "[Working Hours] Found admin:",
+      admin ? admin._id : "null",
+      "beauticianId:",
+      admin?.beauticianId
+    );
+
     if (!admin || !admin.beauticianId) {
-      return res.status(404).json({ error: "No beautician profile associated with this admin account" });
+      return res
+        .status(404)
+        .json({
+          error: "No beautician profile associated with this admin account",
+        });
     }
 
     // Find beautician by beauticianId
     const beautician = await Beautician.findById(admin.beauticianId);
-    console.log("[Working Hours] Found beautician:", beautician ? beautician._id : "null");
-    
+    console.log(
+      "[Working Hours] Found beautician:",
+      beautician ? beautician._id : "null"
+    );
+
     if (!beautician) {
       return res.status(404).json({ error: "Beautician profile not found" });
     }
@@ -191,6 +210,11 @@ r.get("/:id", async (req, res, next) => {
 
     if (!beautician) {
       return res.status(404).json({ error: "Beautician not found" });
+    }
+
+    // Convert Map to plain object for customSchedule if it exists (only if it's still a Map)
+    if (beautician.customSchedule && beautician.customSchedule instanceof Map) {
+      beautician.customSchedule = Object.fromEntries(beautician.customSchedule);
     }
 
     res.json(beautician);

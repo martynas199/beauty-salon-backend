@@ -22,19 +22,41 @@ const CACHE_TTL = 60000;
 
 /**
  * Normalize beautician object for slot computation
- * Converts Date objects to ISO strings for timeOff
+ * Converts Date objects to ISO strings for timeOff and Map to object for customSchedule
  */
 function normalizeBeautician(beautician) {
   if (!beautician) return beautician;
 
-  return {
+  console.log(
+    "[normalizeBeautician] INPUT customSchedule:",
+    beautician.customSchedule
+  );
+  console.log(
+    "[normalizeBeautician] Is Map?",
+    beautician.customSchedule instanceof Map
+  );
+  console.log("[normalizeBeautician] Type:", typeof beautician.customSchedule);
+
+  const normalized = {
     ...beautician,
     timeOff: (beautician.timeOff || []).map((off) => ({
       start: off.start instanceof Date ? off.start.toISOString() : off.start,
       end: off.end instanceof Date ? off.end.toISOString() : off.end,
       reason: off.reason,
     })),
+    // Convert Map to plain object for customSchedule (only if it's a Map)
+    customSchedule:
+      beautician.customSchedule instanceof Map
+        ? Object.fromEntries(beautician.customSchedule)
+        : beautician.customSchedule || {},
   };
+
+  console.log(
+    "[normalizeBeautician] OUTPUT customSchedule:",
+    normalized.customSchedule
+  );
+
+  return normalized;
 }
 
 /**
@@ -249,16 +271,23 @@ r.get("/", async (req, res) => {
   } else {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
-    
-    console.log('[Slots] Fetching slots for:', {
+
+    console.log("[Slots] Fetching slots for:", {
       beauticianId,
       beauticianName: b.name,
       serviceId,
       variantName,
       date,
-      workingHours: b.workingHours
+      workingHours: b.workingHours,
+      customSchedule: b.customSchedule,
     });
-    
+
+    const normalizedBeautician = normalizeBeautician(b);
+    console.log(
+      "[Slots] Normalized beautician customSchedule:",
+      normalizedBeautician.customSchedule
+    );
+
     const appts = await Appointment.find({
       beauticianId,
       start: {
@@ -267,23 +296,25 @@ r.get("/", async (req, res) => {
       },
       status: { $ne: "cancelled" },
     }).lean();
-    
+
     console.log(`[Slots] Found ${appts.length} appointments for ${date}`);
-    
+
     slots = computeSlotsForBeautician({
       date,
       salonTz,
       stepMin,
       service: svc,
-      beautician: normalizeBeautician(b),
+      beautician: normalizedBeautician, // Use the same normalized instance
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),
         status: a.status,
       })),
     });
-    
-    console.log(`[Slots] Generated ${slots.length} available slots for ${date}`);
+
+    console.log(
+      `[Slots] Generated ${slots.length} available slots for ${date}`
+    );
   }
   res.json({ slots });
 });
