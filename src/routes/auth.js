@@ -1,7 +1,9 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
+import crypto from "crypto";
 import Admin from "../models/Admin.js";
+import nodemailer from "nodemailer";
 
 const r = Router();
 
@@ -134,12 +136,21 @@ r.post("/login", async (req, res) => {
       });
     }
 
-    // Check if account is locked
-    if (admin.isLocked()) {
+    // Check if account is locked and handle auto-unlock
+    if (admin.lockUntil && admin.lockUntil < Date.now()) {
+      // Lock has expired, automatically unlock
+      admin.loginAttempts = 0;
+      admin.lockUntil = undefined;
+      await admin.save();
+    } else if (admin.isLocked()) {
+      // Still locked
+      const minutesRemaining = Math.ceil(
+        (admin.lockUntil - Date.now()) / (1000 * 60)
+      );
       return res.status(423).json({
-        error:
-          "Account is temporarily locked due to too many failed login attempts",
+        error: `Account is temporarily locked due to too many failed login attempts. Please try again in ${minutesRemaining} minute${minutesRemaining !== 1 ? "s" : ""}.`,
         lockUntil: admin.lockUntil,
+        minutesRemaining,
       });
     }
 
@@ -417,6 +428,223 @@ r.patch("/change-password", async (req, res) => {
     console.error("Change password error:", error);
     res.status(500).json({
       error: "Failed to change password",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * Helper function to send password reset email
+ */
+async function sendPasswordResetEmail(admin, resetToken) {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
+  
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.error("[AUTH] SMTP not configured. Cannot send password reset email.");
+    throw new Error("Email service not configured");
+  }
+
+  const transport = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: parseInt(SMTP_PORT || "587"),
+    secure: parseInt(SMTP_PORT || "587") === 465,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+
+  // Create reset URL
+  const resetUrl = `${process.env.FRONTEND_URL}/admin/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: SMTP_FROM || `"Noble Elegance Admin" <${SMTP_USER}>`,
+    to: admin.email,
+    subject: "Password Reset Request - Noble Elegance",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
+        <div style="background-color: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <h2 style="color: #7c3aed; border-bottom: 2px solid #7c3aed; padding-bottom: 10px; margin-top: 0;">
+            🔑 Password Reset Request
+          </h2>
+          
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+            Hello <strong>${admin.name}</strong>,
+          </p>
+          
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+            We received a request to reset your password for your Noble Elegance admin account.
+          </p>
+          
+          <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; color: #92400e; font-size: 14px;">
+              ⚠️ <strong>Important:</strong> This link will expire in 10 minutes for security reasons.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" 
+               style="display: inline-block; background-color: #7c3aed; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">
+              Reset Password
+            </a>
+          </div>
+          
+          <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
+            Or copy and paste this URL into your browser:
+          </p>
+          <p style="color: #7c3aed; font-size: 12px; word-break: break-all; background-color: #f3f4f6; padding: 10px; border-radius: 4px;">
+            ${resetUrl}
+          </p>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
+              If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
+            </p>
+            <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
+              For security reasons, this link will only work once and will expire after 10 minutes.
+            </p>
+          </div>
+          
+          <div style="margin-top: 30px; text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+              Noble Elegance Beauty Salon
+            </p>
+            <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+              Admin Portal
+            </p>
+          </div>
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    await transport.sendMail(mailOptions);
+    console.log(`[AUTH] Password reset email sent to ${admin.email}`);
+  } catch (error) {
+    console.error("[AUTH] Failed to send password reset email:", error);
+    throw error;
+  }
+}
+
+/**
+ * POST /api/auth/forgot-password
+ * Request password reset token
+ */
+r.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        error: "Please provide your email address",
+      });
+    }
+
+    // Find admin by email
+    const admin = await Admin.findOne({ email: email.toLowerCase().trim() });
+
+    // Don't reveal if email exists or not for security
+    if (!admin) {
+      return res.json({
+        success: true,
+        message: "If an account with that email exists, a password reset link has been sent.",
+      });
+    }
+
+    // Check if account is active
+    if (!admin.active) {
+      return res.json({
+        success: true,
+        message: "If an account with that email exists, a password reset link has been sent.",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = admin.createPasswordResetToken();
+    await admin.save({ validateBeforeSave: false });
+
+    try {
+      // Send email
+      await sendPasswordResetEmail(admin, resetToken);
+
+      res.json({
+        success: true,
+        message: "Password reset link has been sent to your email address.",
+      });
+    } catch (error) {
+      // If email fails, clear the reset token
+      admin.passwordResetToken = undefined;
+      admin.passwordResetExpires = undefined;
+      await admin.save({ validateBeforeSave: false });
+
+      console.error("Error sending reset email:", error);
+      return res.status(500).json({
+        error: "Failed to send password reset email. Please try again later.",
+      });
+    }
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({
+      error: "Failed to process password reset request",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using token
+ */
+r.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        error: "Please provide reset token and new password",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        error: "Password must be at least 8 characters",
+      });
+    }
+
+    // Hash the token from URL to compare with stored hashed token
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Find admin with valid reset token
+    const admin = await Admin.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+    }).select("+passwordResetToken +passwordResetExpires");
+
+    if (!admin) {
+      return res.status(400).json({
+        error: "Invalid or expired reset token. Please request a new password reset.",
+      });
+    }
+
+    // Set new password
+    admin.password = password;
+    admin.passwordResetToken = undefined;
+    admin.passwordResetExpires = undefined;
+    admin.passwordChangedAt = Date.now();
+    
+    // Also reset login attempts if account was locked
+    admin.loginAttempts = 0;
+    admin.lockUntil = undefined;
+    
+    await admin.save();
+
+    // Log the admin in with new password
+    sendTokenResponse(admin, 200, res);
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({
+      error: "Failed to reset password",
       details: error.message,
     });
   }

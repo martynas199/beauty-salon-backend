@@ -17,6 +17,7 @@ function getStripe() {
 // GET /api/subscriptions/status - Get current subscription status
 router.get("/status", async (req, res) => {
   try {
+    console.log("[SUBSCRIPTIONS] Checking status...");
     const stripe = getStripe();
 
     // For now, using a single salon ID. In production, get from authenticated user
@@ -24,25 +25,50 @@ router.get("/status", async (req, res) => {
 
     // Find subscription in database
     const subscriptionDoc = await Subscription.findOne({ salonId });
+    console.log(
+      "[SUBSCRIPTIONS] Subscription doc from DB:",
+      subscriptionDoc
+        ? {
+            id: subscriptionDoc._id,
+            stripeSubscriptionId: subscriptionDoc.stripeSubscriptionId,
+            status: subscriptionDoc.status,
+          }
+        : null
+    );
 
     if (!subscriptionDoc) {
-      return res.status(404).json({ error: "No subscription found" });
+      console.log("[SUBSCRIPTIONS] No subscription found in database");
+      return res.json({
+        status: "none",
+        hasSubscription: false,
+        message: "No active subscription",
+      });
     }
 
     // Fetch latest subscription data from Stripe
     let subscription;
     try {
+      console.log(
+        "[SUBSCRIPTIONS] Fetching from Stripe:",
+        subscriptionDoc.stripeSubscriptionId
+      );
       subscription = await stripe.subscriptions.retrieve(
         subscriptionDoc.stripeSubscriptionId
+      );
+      console.log(
+        "[SUBSCRIPTIONS] Stripe subscription status:",
+        subscription.status
       );
     } catch (error) {
       // Subscription doesn't exist in current mode (test vs live)
       console.log(
-        `Invalid subscription ID, clearing: ${subscriptionDoc.stripeSubscriptionId}`
+        `[SUBSCRIPTIONS] Invalid subscription ID, clearing: ${subscriptionDoc.stripeSubscriptionId}`,
+        error.message
       );
       await Subscription.deleteOne({ salonId });
-      return res.status(404).json({
-        error: "No subscription found",
+      return res.json({
+        status: "none",
+        hasSubscription: false,
         message: "Previous subscription was invalid and has been cleared.",
       });
     }
@@ -165,7 +191,7 @@ router.get("/invoices", async (req, res) => {
     const subscriptionDoc = await Subscription.findOne({ salonId });
 
     if (!subscriptionDoc) {
-      return res.status(404).json({ error: "No subscription found" });
+      return res.json([]);
     }
 
     // Fetch all invoices for this customer

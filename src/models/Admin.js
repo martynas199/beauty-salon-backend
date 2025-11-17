@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 const adminSchema = new mongoose.Schema(
   {
@@ -53,6 +54,14 @@ const adminSchema = new mongoose.Schema(
     },
     lockUntil: {
       type: Date,
+    },
+    passwordResetToken: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpires: {
+      type: Date,
+      select: false,
     },
   },
   {
@@ -135,12 +144,44 @@ adminSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   return false;
 };
 
+// Create password reset token
+adminSchema.methods.createPasswordResetToken = function () {
+  // Generate random reset token
+  const resetToken = crypto.randomBytes(32).toString("hex");
+
+  // Hash token and set to passwordResetToken field
+  this.passwordResetToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  // Set expiry to 10 minutes from now
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+
+  // Return unhashed token (this is what we send to user)
+  return resetToken;
+};
+
 // Don't return password in JSON
 adminSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
-  delete obj.loginAttempts;
-  delete obj.lockUntil;
+  
+  // Add computed isLocked field for frontend
+  obj.isLocked = this.isLocked();
+  
+  // Include lock info for admins
+  if (obj.isLocked) {
+    obj.lockInfo = {
+      isLocked: true,
+      lockUntil: this.lockUntil,
+      loginAttempts: this.loginAttempts,
+    };
+  } else {
+    delete obj.loginAttempts;
+    delete obj.lockUntil;
+  }
+  
   return obj;
 };
 
