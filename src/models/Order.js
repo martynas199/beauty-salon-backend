@@ -124,6 +124,16 @@ const OrderSchema = new Schema(
       type: ShippingAddressSchema,
       required: true,
     },
+    isCollection: {
+      type: Boolean,
+      default: false,
+      // True if customer is collecting in person instead of delivery
+    },
+    collectionAddress: {
+      type: String,
+      default: "12 Blackfriars Rd, PE13 1AT",
+      // Default collection address
+    },
     subtotal: {
       type: Number,
       required: true,

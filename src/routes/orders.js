@@ -369,6 +369,7 @@ router.post("/checkout", async (req, res) => {
         beauticianId: item.beauticianId,
       })),
       shippingAddress,
+      isCollection: req.body.isCollection || false,
       subtotal,
       shipping,
       tax: 0,
@@ -887,10 +888,12 @@ router.delete("/:id", async (req, res) => {
 
     await Order.findByIdAndDelete(req.params.id);
 
-    console.log(`[ORDER DELETE] Order ${order._id} (${order.orderNumber}) deleted`);
-    res.json({ 
-      success: true, 
-      message: `Order ${order.orderNumber} deleted successfully` 
+    console.log(
+      `[ORDER DELETE] Order ${order._id} (${order.orderNumber}) deleted`
+    );
+    res.json({
+      success: true,
+      message: `Order ${order.orderNumber} deleted successfully`,
     });
   } catch (error) {
     console.error("Error deleting order:", error);
