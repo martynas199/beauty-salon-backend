@@ -15,7 +15,9 @@ async function sendAccountUnlockedEmail(admin) {
     const pass = process.env.SMTP_PASS;
 
     if (!host || !user || !pass) {
-      console.warn("[MAILER] SMTP not configured - skipping unlock notification email");
+      console.warn(
+        "[MAILER] SMTP not configured - skipping unlock notification email"
+      );
       return;
     }
 
@@ -70,9 +72,15 @@ This is an automated message. Please do not reply to this email.`,
       `,
     });
 
-    console.log("[MAILER] ✓ Account unlocked email sent successfully to:", admin.email);
+    console.log(
+      "[MAILER] ✓ Account unlocked email sent successfully to:",
+      admin.email
+    );
   } catch (error) {
-    console.error("[MAILER] ✗ Failed to send unlock notification email:", error);
+    console.error(
+      "[MAILER] ✗ Failed to send unlock notification email:",
+      error
+    );
     // Don't throw - email failure shouldn't fail the unlock
   }
 }

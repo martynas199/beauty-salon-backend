@@ -61,12 +61,12 @@ const checkLockedAccounts = async () => {
             (admin.lockUntil - now) / (1000 * 60)
           );
           if (minutesRemaining > 0) {
-            console.log(
-              `   ⏰ Time Remaining: ${minutesRemaining} minutes`
-            );
+            console.log(`   ⏰ Time Remaining: ${minutesRemaining} minutes`);
           } else {
             console.log(
-              `   ⏰ Lock expired ${Math.abs(minutesRemaining)} minutes ago (will auto-unlock on next login)`
+              `   ⏰ Lock expired ${Math.abs(
+                minutesRemaining
+              )} minutes ago (will auto-unlock on next login)`
             );
           }
         }
@@ -101,9 +101,7 @@ const checkLockedAccounts = async () => {
     console.log(`Total Admins: ${allAdmins.length}`);
     console.log(`🔒 Locked: ${lockedAdmins.length}`);
     console.log(`✅ Unlocked: ${unlockedAdmins.length}`);
-    console.log(
-      `⚠️  With Failed Attempts: ${accountsWithAttempts.length}`
-    );
+    console.log(`⚠️  With Failed Attempts: ${accountsWithAttempts.length}`);
     console.log("=".repeat(80));
 
     await mongoose.disconnect();

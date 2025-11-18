@@ -148,7 +148,9 @@ r.post("/login", async (req, res) => {
         (admin.lockUntil - Date.now()) / (1000 * 60)
       );
       return res.status(423).json({
-        error: `Account is temporarily locked due to too many failed login attempts. Please try again in ${minutesRemaining} minute${minutesRemaining !== 1 ? "s" : ""}.`,
+        error: `Account is temporarily locked due to too many failed login attempts. Please try again in ${minutesRemaining} minute${
+          minutesRemaining !== 1 ? "s" : ""
+        }.`,
         lockUntil: admin.lockUntil,
         minutesRemaining,
       });
@@ -438,9 +440,11 @@ r.patch("/change-password", async (req, res) => {
  */
 async function sendPasswordResetEmail(admin, resetToken) {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
-  
+
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.error("[AUTH] SMTP not configured. Cannot send password reset email.");
+    console.error(
+      "[AUTH] SMTP not configured. Cannot send password reset email."
+    );
     throw new Error("Email service not configured");
   }
 
@@ -548,7 +552,8 @@ r.post("/forgot-password", async (req, res) => {
     if (!admin) {
       return res.json({
         success: true,
-        message: "If an account with that email exists, a password reset link has been sent.",
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
       });
     }
 
@@ -556,7 +561,8 @@ r.post("/forgot-password", async (req, res) => {
     if (!admin.active) {
       return res.json({
         success: true,
-        message: "If an account with that email exists, a password reset link has been sent.",
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
       });
     }
 
@@ -623,7 +629,8 @@ r.post("/reset-password", async (req, res) => {
 
     if (!admin) {
       return res.status(400).json({
-        error: "Invalid or expired reset token. Please request a new password reset.",
+        error:
+          "Invalid or expired reset token. Please request a new password reset.",
       });
     }
 
@@ -632,11 +639,11 @@ r.post("/reset-password", async (req, res) => {
     admin.passwordResetToken = undefined;
     admin.passwordResetExpires = undefined;
     admin.passwordChangedAt = Date.now();
-    
+
     // Also reset login attempts if account was locked
     admin.loginAttempts = 0;
     admin.lockUntil = undefined;
-    
+
     await admin.save();
 
     // Log the admin in with new password

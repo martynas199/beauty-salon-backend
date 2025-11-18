@@ -150,6 +150,16 @@ export function hhmmToMinutes(hhmm) {
 }
 
 /**
+ * @param {number} minutes
+ * @returns {string} HH:mm format
+ */
+export function minutesToHHMM(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
  * Convert salon-local day minutes to a real Date in tz.
  * @param {string} date YYYY-MM-DD (salon local)
  * @param {number} minutes minutes since 00:00 local
@@ -215,42 +225,52 @@ export function buildWorkingWindows(
   const dayOfWeek = dayjs(date).day(); // 0=Sunday, 6=Saturday
   const weekday = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayOfWeek];
 
-  console.log(`[buildWorkingWindows] Called for ${date}`, {
-    hasCustomSchedule: !!customSchedule,
-    customScheduleKeys: customSchedule ? Object.keys(customSchedule) : [],
-    customScheduleForDate: customSchedule ? customSchedule[date] : undefined,
-  });
+  console.log("\n========================================");
+  console.log(`[buildWorkingWindows] Building windows for ${date} (${weekday}, dayOfWeek=${dayOfWeek})`);
+  console.log("========================================");
+  console.log("[buildWorkingWindows] Input parameters:");
+  console.log("  - hasCustomSchedule:", !!customSchedule);
+  console.log("  - customSchedule keys:", customSchedule ? Object.keys(customSchedule) : []);
+  console.log("  - customSchedule for this date:", customSchedule ? customSchedule[date] : undefined);
+  console.log("  - workingHours type:", Array.isArray(workingHours) ? "array" : typeof workingHours);
+  console.log("  - overrides:", overrides);
 
   let dayEntries = [];
 
   // Priority 1: Check for custom schedule for this specific date
   if (customSchedule && customSchedule[date]) {
     dayEntries = customSchedule[date].filter((slot) => slot.start && slot.end);
-    console.log(`[SlotPlanner] Custom schedule found for ${date}:`, dayEntries);
+    console.log(`[buildWorkingWindows] ✓ Custom schedule found for ${date}:`, dayEntries);
   }
   // Priority 2: Handle new array format: [{dayOfWeek: 1, start: "09:00", end: "17:00"}, ...]
   // Note: There can be multiple entries for the same day (e.g., morning and afternoon shifts)
   else if (Array.isArray(workingHours)) {
-    dayEntries = workingHours.filter(
-      (wh) => wh.dayOfWeek === dayOfWeek && wh.start && wh.end
-    );
-    console.log(
-      `[SlotPlanner] Array format - Found ${dayEntries.length} entries for dayOfWeek ${dayOfWeek} (${weekday})`
-    );
+    const matchingEntries = workingHours.filter((wh) => wh.dayOfWeek === dayOfWeek);
+    dayEntries = matchingEntries.filter((wh) => wh.start && wh.end);
+    console.log(`[buildWorkingWindows] Array format - Found ${matchingEntries.length} entries for dayOfWeek ${dayOfWeek}:`);
+    console.log("  - All working hours:", workingHours);
+    console.log("  - Matching entries:", matchingEntries);
+    console.log("  - Valid entries (with start & end):", dayEntries);
   }
   // Priority 3: Handle legacy object format: {mon: {start, end, breaks}, tue: ...}
   else if (workingHours && typeof workingHours === "object") {
     const day = workingHours[weekday];
-    console.log(`[SlotPlanner] Legacy format - ${weekday}:`, day);
+    console.log(`[buildWorkingWindows] Legacy format - ${weekday}:`, day);
     if (day && day.start && day.end) {
       dayEntries = [day];
+      console.log(`[buildWorkingWindows] ✓ Found valid day entry for ${weekday}`);
+    } else {
+      console.log(`[buildWorkingWindows] ✗ No valid entry for ${weekday}`);
     }
+  } else {
+    console.log("[buildWorkingWindows] ✗ Invalid workingHours format:", workingHours);
   }
 
   if (dayEntries.length === 0) {
     console.log(
-      `[SlotPlanner] No valid working hours for ${date} (${weekday})`
+      `[buildWorkingWindows] ❌ NO VALID WORKING HOURS for ${date} (${weekday})`
     );
+    console.log("========================================\n");
     return null;
   }
 
@@ -269,15 +289,22 @@ export function buildWorkingWindows(
 
   if (windows.length === 0) {
     console.log(
-      `[SlotPlanner] No valid working windows after filtering for ${date}`
+      `[buildWorkingWindows] ❌ NO VALID WINDOWS after filtering for ${date}`
     );
+    console.log("========================================\n");
     return null;
   }
 
   console.log(
-    `[SlotPlanner] Built ${windows.length} working window(s) for ${date}:`,
-    windows
+    `[buildWorkingWindows] ✓ Built ${windows.length} working window(s) for ${date}:`
   );
+  windows.forEach((w, i) => {
+    console.log(`  Window ${i + 1}: ${minutesToHHMM(w.startMin)} - ${minutesToHHMM(w.endMin)}`);
+    if (w.breaks.length > 0) {
+      console.log(`    Breaks:`, w.breaks.map(b => `${minutesToHHMM(b.startMin)}-${minutesToHHMM(b.endMin)}`));
+    }
+  });
+  console.log("========================================\n");
   return windows;
 }
 
@@ -331,7 +358,15 @@ function buildBlockingIntervals({
 }) {
   const blocks = [];
   for (const a of appointments || []) {
-    if (a.status === "cancelled") continue;
+    // Skip all cancelled appointments (cancelled, cancelled_no_refund, cancelled_partial_refund, cancelled_full_refund)
+    if (a.status && a.status.startsWith("cancelled")) {
+      console.log(`[buildBlockingIntervals] Skipping cancelled appointment:`, {
+        start: a.start,
+        end: a.end,
+        status: a.status,
+      });
+      continue;
+    }
     blocks.push({ start: new Date(a.start), end: new Date(a.end) });
   }
   for (const off of timeOff || []) {
@@ -342,6 +377,14 @@ function buildBlockingIntervals({
   }
   // clamp to date
   const clamped = blocks.map((iv) => clampToDay(iv, date, tz)).filter(Boolean);
+  
+  console.log(`[buildBlockingIntervals] Total blocking intervals for ${date}:`, clamped.length);
+  if (clamped.length > 0) {
+    clamped.forEach((interval, i) => {
+      console.log(`  Block ${i + 1}: ${interval.start.toISOString()} - ${interval.end.toISOString()}`);
+    });
+  }
+  
   return mergeOverlaps(clamped);
 }
 

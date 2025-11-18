@@ -166,10 +166,10 @@ adminSchema.methods.createPasswordResetToken = function () {
 adminSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
-  
+
   // Add computed isLocked field for frontend
   obj.isLocked = this.isLocked();
-  
+
   // Include lock info for admins
   if (obj.isLocked) {
     obj.lockInfo = {
@@ -181,7 +181,7 @@ adminSchema.methods.toJSON = function () {
     delete obj.loginAttempts;
     delete obj.lockUntil;
   }
-  
+
   return obj;
 };
 
