@@ -4,6 +4,7 @@ const VariantSchema = new mongoose.Schema(
     name: String,
     durationMin: Number,
     price: Number,
+    promoPrice: Number, // Promotional price (optional) - if set, variant is on special offer
     bufferBeforeMin: { type: Number, default: 0 },
     bufferAfterMin: { type: Number, default: 10 },
   },
@@ -34,6 +35,7 @@ const ServiceSchema = new mongoose.Schema(
     ],
     // Additional fields for admin system
     price: Number,
+    promoPrice: Number, // Promotional price (optional) - if set, service is on special offer
     durationMin: Number,
     active: { type: Boolean, default: true, index: true }, // Index for filtering
     priceVaries: { type: Boolean, default: false }, // Indicates if price varies

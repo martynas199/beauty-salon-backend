@@ -31,6 +31,7 @@ const variantSchema = z.object({
   name: z.string().min(1, "Variant name is required").max(100),
   durationMin: z.number().int().positive("Duration must be positive"),
   price: z.number().positive("Price must be positive"),
+  promoPrice: z.number().positive("Promo price must be positive").optional(),
   bufferBeforeMin: z.number().int().nonnegative().default(0),
   bufferAfterMin: z.number().int().nonnegative().default(0),
 });
@@ -51,6 +52,7 @@ const baseServiceSchema = z.object({
   gallery: z.array(galleryImageSchema).optional(),
   active: z.boolean().default(true),
   priceVaries: z.boolean().default(false),
+  promoPrice: z.number().positive("Promo price must be positive").optional(),
 });
 
 // Create service schema (POST)
