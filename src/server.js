@@ -56,7 +56,7 @@ const allowedOrigins = [
   "http://localhost:5174", // Vite dev server (alternative port)
   "http://localhost:5177", // Vite dev server (alternative port)
   "http://localhost:3000", // Alternative dev port
-  "https://permanentbyjuste.co.uk/", // Production frontend
+  "https://permanentbyjuste.co.uk", // Production frontend
   "https://www.nobleelegance.co.uk", // Production frontend
   process.env.FRONTEND_URL, // Production frontend URL from env (if different)
 ].filter(Boolean);
