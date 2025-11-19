@@ -64,6 +64,7 @@ const baseBeauticianSchema = z.object({
   customSchedule: customScheduleSchema,
   timeOff: z.array(timeOffSchema).optional(),
   active: z.boolean().default(true),
+  inSalonPayment: z.boolean().optional(),
   color: z
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color")

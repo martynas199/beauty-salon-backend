@@ -88,6 +88,9 @@ const BeauticianSchema = new mongoose.Schema(
     totalEarnings: { type: Number, default: 0 }, // Total revenue from bookings + products
     totalPayouts: { type: Number, default: 0 }, // Total amount paid out by Stripe
     lastPayoutDate: Date,
+
+    // Payment preferences
+    inSalonPayment: { type: Boolean, default: false }, // If true, accept payment in salon (no Stripe deposit, only booking fee)
   },
   { timestamps: true }
 );

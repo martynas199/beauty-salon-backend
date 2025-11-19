@@ -225,52 +225,27 @@ export function buildWorkingWindows(
   const dayOfWeek = dayjs(date).day(); // 0=Sunday, 6=Saturday
   const weekday = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayOfWeek];
 
-  console.log("\n========================================");
-  console.log(`[buildWorkingWindows] Building windows for ${date} (${weekday}, dayOfWeek=${dayOfWeek})`);
-  console.log("========================================");
-  console.log("[buildWorkingWindows] Input parameters:");
-  console.log("  - hasCustomSchedule:", !!customSchedule);
-  console.log("  - customSchedule keys:", customSchedule ? Object.keys(customSchedule) : []);
-  console.log("  - customSchedule for this date:", customSchedule ? customSchedule[date] : undefined);
-  console.log("  - workingHours type:", Array.isArray(workingHours) ? "array" : typeof workingHours);
-  console.log("  - overrides:", overrides);
-
   let dayEntries = [];
 
   // Priority 1: Check for custom schedule for this specific date
   if (customSchedule && customSchedule[date]) {
     dayEntries = customSchedule[date].filter((slot) => slot.start && slot.end);
-    console.log(`[buildWorkingWindows] ✓ Custom schedule found for ${date}:`, dayEntries);
   }
   // Priority 2: Handle new array format: [{dayOfWeek: 1, start: "09:00", end: "17:00"}, ...]
   // Note: There can be multiple entries for the same day (e.g., morning and afternoon shifts)
   else if (Array.isArray(workingHours)) {
     const matchingEntries = workingHours.filter((wh) => wh.dayOfWeek === dayOfWeek);
     dayEntries = matchingEntries.filter((wh) => wh.start && wh.end);
-    console.log(`[buildWorkingWindows] Array format - Found ${matchingEntries.length} entries for dayOfWeek ${dayOfWeek}:`);
-    console.log("  - All working hours:", workingHours);
-    console.log("  - Matching entries:", matchingEntries);
-    console.log("  - Valid entries (with start & end):", dayEntries);
   }
   // Priority 3: Handle legacy object format: {mon: {start, end, breaks}, tue: ...}
   else if (workingHours && typeof workingHours === "object") {
     const day = workingHours[weekday];
-    console.log(`[buildWorkingWindows] Legacy format - ${weekday}:`, day);
     if (day && day.start && day.end) {
       dayEntries = [day];
-      console.log(`[buildWorkingWindows] ✓ Found valid day entry for ${weekday}`);
-    } else {
-      console.log(`[buildWorkingWindows] ✗ No valid entry for ${weekday}`);
     }
-  } else {
-    console.log("[buildWorkingWindows] ✗ Invalid workingHours format:", workingHours);
   }
 
   if (dayEntries.length === 0) {
-    console.log(
-      `[buildWorkingWindows] ❌ NO VALID WORKING HOURS for ${date} (${weekday})`
-    );
-    console.log("========================================\n");
     return null;
   }
 
@@ -288,23 +263,8 @@ export function buildWorkingWindows(
     .filter((w) => w.startMin < w.endMin); // Only keep valid windows
 
   if (windows.length === 0) {
-    console.log(
-      `[buildWorkingWindows] ❌ NO VALID WINDOWS after filtering for ${date}`
-    );
-    console.log("========================================\n");
     return null;
   }
-
-  console.log(
-    `[buildWorkingWindows] ✓ Built ${windows.length} working window(s) for ${date}:`
-  );
-  windows.forEach((w, i) => {
-    console.log(`  Window ${i + 1}: ${minutesToHHMM(w.startMin)} - ${minutesToHHMM(w.endMin)}`);
-    if (w.breaks.length > 0) {
-      console.log(`    Breaks:`, w.breaks.map(b => `${minutesToHHMM(b.startMin)}-${minutesToHHMM(b.endMin)}`));
-    }
-  });
-  console.log("========================================\n");
   return windows;
 }
 
@@ -378,13 +338,6 @@ function buildBlockingIntervals({
   // clamp to date
   const clamped = blocks.map((iv) => clampToDay(iv, date, tz)).filter(Boolean);
   
-  console.log(`[buildBlockingIntervals] Total blocking intervals for ${date}:`, clamped.length);
-  if (clamped.length > 0) {
-    clamped.forEach((interval, i) => {
-      console.log(`  Block ${i + 1}: ${interval.start.toISOString()} - ${interval.end.toISOString()}`);
-    });
-  }
-  
   return mergeOverlaps(clamped);
 }
 
@@ -412,15 +365,6 @@ export function computeSlotsForBeautician(params) {
     "[computeSlotsForBeautician] beautician.customSchedule:",
     beautician.customSchedule
   );
-  console.log(
-    "[computeSlotsForBeautician] type:",
-    typeof beautician.customSchedule
-  );
-  console.log(
-    "[computeSlotsForBeautician] is null/undefined?",
-    beautician.customSchedule == null
-  );
-
   const windows = buildWorkingWindows(
     beautician.workingHours,
     date,

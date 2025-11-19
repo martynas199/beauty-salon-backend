@@ -107,4 +107,14 @@ AppointmentSchema.index({ userId: 1, start: -1 }); // User's appointments sorted
 AppointmentSchema.index({ "client.email": 1 }); // Guest booking lookups
 AppointmentSchema.index({ createdAt: -1 }); // Recent appointments
 
+// TTL index to automatically delete abandoned unpaid reservations after 3 minutes
+// This prevents reserved_unpaid appointments from blocking slots forever if payment is not completed
+AppointmentSchema.index(
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: 180, // 3 minutes
+    partialFilterExpression: { status: "reserved_unpaid" },
+  }
+);
+
 export default mongoose.model("Appointment", AppointmentSchema);

@@ -304,21 +304,28 @@ r.post("/create-session", async (req, res, next) => {
           "Deposit mode requested but STRIPE_DEPOSIT_PERCENT not configured (1-99)",
       });
     }
+    // Get beautician to check payment settings and Stripe Connect status
+    const beautician = await Beautician.findById(appt.beauticianId).lean();
+
     const baseAmount = Number(appt.price || 0);
     const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
 
-    // Add platform fee to the base amount for client to pay
-    const amountBeforeFee = isDeposit
-      ? (baseAmount * depositPct) / 100
-      : baseAmount;
+    // If beautician accepts in-salon payment, charge only the booking fee
+    let amountBeforeFee;
+    if (beautician?.inSalonPayment) {
+      amountBeforeFee = 0; // No service charge, only booking fee
+    } else {
+      // Normal payment flow
+      amountBeforeFee = isDeposit
+        ? (baseAmount * depositPct) / 100
+        : baseAmount;
+    }
+
     const amountToPay = amountBeforeFee + platformFee / 100; // Convert pence to pounds
 
     const unit_amount = toMinorUnits(amountToPay);
     if (unit_amount < 1)
       return res.status(400).json({ error: "Invalid amount" });
-
-    // Get beautician to check Stripe Connect status (needed before creating session)
-    const beautician = await Beautician.findById(appt.beauticianId).lean();
 
     // Get the appropriate Stripe instance
     const stripe = getStripe(

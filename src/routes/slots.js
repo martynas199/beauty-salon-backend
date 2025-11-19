@@ -27,16 +27,6 @@ const CACHE_TTL = 60000;
 function normalizeBeautician(beautician) {
   if (!beautician) return beautician;
 
-  console.log(
-    "[normalizeBeautician] INPUT customSchedule:",
-    beautician.customSchedule
-  );
-  console.log(
-    "[normalizeBeautician] Is Map?",
-    beautician.customSchedule instanceof Map
-  );
-  console.log("[normalizeBeautician] Type:", typeof beautician.customSchedule);
-
   const normalized = {
     ...beautician,
     timeOff: (beautician.timeOff || []).map((off) => ({
@@ -50,11 +40,6 @@ function normalizeBeautician(beautician) {
         ? Object.fromEntries(beautician.customSchedule)
         : beautician.customSchedule || {},
   };
-
-  console.log(
-    "[normalizeBeautician] OUTPUT customSchedule:",
-    normalized.customSchedule
-  );
 
   return normalized;
 }
@@ -272,45 +257,7 @@ r.get("/", async (req, res) => {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
 
-    console.log("\n========================================");
-    console.log("[Slots] DETAILED DEBUG INFO");
-    console.log("========================================");
-    console.log("[Slots] Request params:", {
-      beauticianId,
-      serviceId,
-      variantName,
-      date,
-    });
-    console.log("[Slots] Beautician name:", b.name);
-    console.log("[Slots] Beautician active:", b.active);
-    console.log(
-      "[Slots] Working hours raw:",
-      JSON.stringify(b.workingHours, null, 2)
-    );
-    console.log(
-      "[Slots] Custom schedule raw:",
-      JSON.stringify(b.customSchedule, null, 2)
-    );
-    console.log("[Slots] Custom schedule type:", typeof b.customSchedule);
-    console.log("[Slots] Custom schedule is Map:", b.customSchedule instanceof Map);
-    console.log("[Slots] Time off:", JSON.stringify(b.timeOff, null, 2));
-    console.log("[Slots] Service details:", JSON.stringify(svc, null, 2));
-    console.log("[Slots] Salon timezone:", salonTz);
-    console.log("[Slots] Step minutes:", stepMin);
-
-    // Check what day of week this is
-    const dateObj = dayjs.tz(date, salonTz);
-    const dayOfWeek = dateObj.day();
-    const dayName = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
-      dayOfWeek
-    ];
-    console.log(`[Slots] Selected date info: ${date} is a ${dayName} (${dayOfWeek})`);
-
     const normalizedBeautician = normalizeBeautician(b);
-    console.log(
-      "[Slots] Normalized beautician customSchedule:",
-      JSON.stringify(normalizedBeautician.customSchedule, null, 2)
-    );
 
     const appts = await Appointment.find({
       beauticianId,
@@ -320,18 +267,6 @@ r.get("/", async (req, res) => {
       },
       status: { $ne: "cancelled" },
     }).lean();
-
-    console.log(`[Slots] Found ${appts.length} appointments for ${date}`);
-    if (appts.length > 0) {
-      console.log(
-        "[Slots] Appointments:",
-        appts.map((a) => ({
-          start: new Date(a.start).toISOString(),
-          end: new Date(a.end).toISOString(),
-          status: a.status,
-        }))
-      );
-    }
 
     slots = computeSlotsForBeautician({
       date,
@@ -345,40 +280,6 @@ r.get("/", async (req, res) => {
         status: a.status,
       })),
     });
-
-    console.log(
-      `[Slots] Generated ${slots.length} available slots for ${date}`
-    );
-    if (slots.length > 0) {
-      console.log(
-        "[Slots] First few slots:",
-        slots.slice(0, 5).map((s) => ({
-          start: s.startISO,
-          end: s.endISO,
-        }))
-      );
-    } else {
-      console.log("[Slots] ⚠️ NO SLOTS GENERATED - Checking possible reasons:");
-      console.log("  1. Is beautician active?", normalizedBeautician.active !== false);
-      console.log("  2. Has working hours for this day?");
-      if (Array.isArray(normalizedBeautician.workingHours)) {
-        const hasWorkingHours = normalizedBeautician.workingHours.some(
-          (wh) => wh.dayOfWeek === dayOfWeek
-        );
-        console.log("     - Array format:", hasWorkingHours);
-        if (!hasWorkingHours) {
-          console.log(
-            "     - Configured days:",
-            normalizedBeautician.workingHours.map((wh) => wh.dayOfWeek)
-          );
-        }
-      }
-      console.log("  3. Has custom schedule for this date?", !!normalizedBeautician.customSchedule?.[date]);
-      if (normalizedBeautician.customSchedule?.[date]) {
-        console.log("     - Custom schedule:", normalizedBeautician.customSchedule[date]);
-      }
-    }
-    console.log("========================================\n");
   }
   res.json({ slots });
 });
