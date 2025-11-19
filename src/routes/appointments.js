@@ -488,4 +488,38 @@ r.delete("/beautician/:beauticianId", async (req, res) => {
   }
 });
 
+// Delete a specific canceled appointment
+r.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find the appointment
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Only allow deletion of canceled appointments
+    if (!appointment.status.startsWith("cancelled_")) {
+      return res.status(400).json({
+        error: "Only canceled appointments can be deleted",
+        currentStatus: appointment.status,
+      });
+    }
+
+    // Delete the appointment
+    await Appointment.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: "Canceled appointment deleted successfully",
+    });
+  } catch (err) {
+    console.error("delete_appointment_err", err);
+    res.status(400).json({
+      error: err.message || "Failed to delete appointment",
+    });
+  }
+});
+
 export default r;
