@@ -214,35 +214,51 @@ r.post("/:id/cancel", async (req, res) => {
         graceMinutes: 15,
         currency: "GBP",
       };
-    const outcome = computeCancellationOutcome({
-      appointment: appt,
-      policy,
-      now: new Date(),
-      salonTz,
-    });
+    // For unpaid appointments, skip refund logic entirely
+    let outcome;
     let stripeRefundId;
-    if (outcome.refundAmount > 0 && appt.payment?.provider === "stripe") {
-      const key = `cancel:${id}:${new Date(
-        appt.updatedAt || appt.createdAt || Date.now()
-      ).getTime()}`;
-      const ref = appt.payment?.stripe || {};
-      try {
-        const rf = await refundPayment({
-          paymentIntentId: ref.paymentIntentId,
-          chargeId: ref.chargeId,
-          amount: outcome.refundAmount,
-          idempotencyKey: key,
-        });
-        stripeRefundId = rf.id;
-      } catch (e) {
-        console.error("Refund error", { id, err: e.message });
-        return res
-          .status(502)
-          .json({ error: "Refund failed", details: e.message });
+    let newStatus;
+    
+    if (appt.status === "reserved_unpaid") {
+      // Unpaid appointment - no refund needed
+      outcome = {
+        refundAmount: 0,
+        outcomeStatus: "cancelled_no_refund",
+        reasonCode: "unpaid_appointment"
+      };
+      newStatus = "cancelled_no_refund";
+    } else {
+      // Paid appointment - calculate refund
+      outcome = computeCancellationOutcome({
+        appointment: appt,
+        policy,
+        now: new Date(),
+        salonTz,
+      });
+      
+      if (outcome.refundAmount > 0 && appt.payment?.provider === "stripe") {
+        const key = `cancel:${id}:${new Date(
+          appt.updatedAt || appt.createdAt || Date.now()
+        ).getTime()}`;
+        const ref = appt.payment?.stripe || {};
+        try {
+          const rf = await refundPayment({
+            paymentIntentId: ref.paymentIntentId,
+            chargeId: ref.chargeId,
+            amount: outcome.refundAmount,
+            idempotencyKey: key,
+          });
+          stripeRefundId = rf.id;
+        } catch (e) {
+          console.error("Refund error", { id, err: e.message });
+          return res
+            .status(502)
+            .json({ error: "Refund failed", details: e.message });
+        }
       }
+      newStatus =
+        outcome.refundAmount > 0 ? outcome.outcomeStatus : "cancelled_no_refund";
     }
-    const newStatus =
-      outcome.refundAmount > 0 ? outcome.outcomeStatus : "cancelled_no_refund";
     const update = {
       $set: {
         status: newStatus,

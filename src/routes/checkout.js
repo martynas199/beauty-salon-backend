@@ -280,7 +280,7 @@ r.post("/create-session", async (req, res, next) => {
         variantName,
         start,
         end,
-        price: variant.price,
+        price: variant.promoPrice || variant.price,
         status: "reserved_unpaid",
         ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
       });
