@@ -296,7 +296,10 @@ export async function sendConfirmationEmail({
   let bookingFee = 0;
   let remainingBalance = 0;
 
-  if (appointment.payment?.mode === "pay_in_salon") {
+  // Check if beautician has in-salon payment enabled
+  if (beautician?.inSalonPayment) {
+    paymentStatus = `Pay in salon (${price} due at appointment)`;
+  } else if (appointment.payment?.mode === "pay_in_salon") {
     paymentStatus = "Pay at salon";
   } else if (appointment.payment?.mode === "pay_now") {
     paymentStatus =
