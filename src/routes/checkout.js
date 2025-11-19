@@ -136,6 +136,22 @@ r.get("/confirm", async (req, res, next) => {
           : undefined,
     };
 
+    // Capture payment error details if payment intent has an error
+    if (typeof pi === "object" && pi?.last_payment_error) {
+      const error = pi.last_payment_error;
+      stripeData.lastPaymentError = {
+        code: error.code,
+        message: error.message,
+        declineCode: error.decline_code,
+        type: error.type,
+      };
+      console.log(
+        "[CHECKOUT CONFIRM] Payment error captured:",
+        error.code,
+        error.decline_code
+      );
+    }
+
     // Add Connect data if beautician was connected
     if (
       beautician?.stripeAccountId &&

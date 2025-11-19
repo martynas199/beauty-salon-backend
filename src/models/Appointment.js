@@ -9,6 +9,13 @@ const PaymentStripeSchema = new mongoose.Schema(
     platformFee: { type: Number, default: 50 }, // £0.50 in pence
     beauticianStripeAccount: String, // Connected account ID
     transferId: String, // ID of the transfer to beautician
+    // Payment error details (for failed/declined payments)
+    lastPaymentError: {
+      code: String, // e.g., 'card_declined', 'insufficient_funds'
+      message: String, // Human-readable error message
+      declineCode: String, // e.g., 'generic_decline', 'insufficient_funds'
+      type: String, // e.g., 'card_error', 'validation_error'
+    },
   },
   { _id: false }
 );

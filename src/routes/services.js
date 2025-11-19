@@ -75,9 +75,13 @@ r.get("/", optionalAuth, async (req, res, next) => {
       query.category = category;
     }
     if (beauticianId) {
+      console.log(`[SERVICES] Filtering by beauticianId: ${beauticianId}`);
+      // Check all possible beautician fields (including legacy fields)
       query.$or = [
         { primaryBeauticianId: beauticianId },
         { additionalBeauticianIds: beauticianId },
+        { beauticianId: beauticianId }, // Legacy single beautician field
+        { beauticianIds: beauticianId }, // Legacy beauticians array
       ];
     }
 
@@ -89,9 +93,12 @@ r.get("/", optionalAuth, async (req, res, next) => {
         console.log(
           `[SERVICES] Filtering for BEAUTICIAN admin: ${req.admin.beauticianId}`
         );
+        // Override any existing $or filter to enforce role-based access
         query.$or = [
           { primaryBeauticianId: req.admin.beauticianId },
           { additionalBeauticianIds: req.admin.beauticianId },
+          { beauticianId: req.admin.beauticianId }, // Legacy field
+          { beauticianIds: req.admin.beauticianId }, // Legacy field
         ];
       }
       // SUPER_ADMIN: See all services (no additional filter needed)
@@ -99,6 +106,8 @@ r.get("/", optionalAuth, async (req, res, next) => {
         console.log("[SERVICES] SUPER_ADMIN: Showing all services");
       }
     }
+
+    console.log("[SERVICES] Final query:", JSON.stringify(query, null, 2));
 
     // Get total count for pagination (uses indexed fields)
     const total = await Service.countDocuments(query);

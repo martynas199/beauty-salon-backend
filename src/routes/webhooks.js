@@ -359,12 +359,15 @@ r.post("/stripe", async (req, res) => {
           "[WEBHOOK] payment_intent.payment_failed - apptId:",
           apptId,
           "orderId:",
-          orderId
+          orderId,
+          "error:",
+          pi.last_payment_error?.code,
+          pi.last_payment_error?.decline_code
         );
 
         if (apptId) {
           try {
-            await Appointment.findByIdAndUpdate(apptId, {
+            const updateData = {
               $set: { "payment.status": "unpaid", status: "reserved_unpaid" },
               $push: {
                 audit: {
@@ -376,7 +379,20 @@ r.post("/stripe", async (req, res) => {
                   },
                 },
               },
-            });
+            };
+
+            // Capture detailed payment error information
+            if (pi.last_payment_error) {
+              const error = pi.last_payment_error;
+              updateData.$set["payment.stripe.lastPaymentError"] = {
+                code: error.code,
+                message: error.message,
+                declineCode: error.decline_code,
+                type: error.type,
+              };
+            }
+
+            await Appointment.findByIdAndUpdate(apptId, updateData);
           } catch (e) {
             console.error("[WEBHOOK] payment failed update err", e);
           }
@@ -384,9 +400,22 @@ r.post("/stripe", async (req, res) => {
 
         if (orderId) {
           try {
-            await Order.findByIdAndUpdate(orderId, {
+            const orderUpdateData = {
               $set: { paymentStatus: "failed" },
-            });
+            };
+
+            // Capture detailed payment error information for orders
+            if (pi.last_payment_error) {
+              const error = pi.last_payment_error;
+              orderUpdateData.$set.lastPaymentError = {
+                code: error.code,
+                message: error.message,
+                declineCode: error.decline_code,
+                type: error.type,
+              };
+            }
+
+            await Order.findByIdAndUpdate(orderId, orderUpdateData);
           } catch (e) {
             console.error("[WEBHOOK] order payment failed update err", e);
           }

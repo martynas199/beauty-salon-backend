@@ -186,6 +186,13 @@ const OrderSchema = new Schema(
       type: String,
       default: "",
     },
+    // Payment error details (for failed/declined payments)
+    lastPaymentError: {
+      code: String, // e.g., 'card_declined', 'insufficient_funds'
+      message: String, // Human-readable error message
+      declineCode: String, // e.g., 'generic_decline', 'insufficient_funds'
+      type: String, // e.g., 'card_error', 'validation_error'
+    },
     // Stripe Connect payment tracking
     stripeConnectPayments: [
       {
