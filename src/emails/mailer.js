@@ -456,6 +456,136 @@ Thank you for choosing us!`,
     console.error("[MAILER] ✗ Failed to send confirmation email:", error);
     throw error;
   }
+
+  // Send notification to beautician
+  const beauticianEmail = beautician?.email;
+  console.log("[MAILER] Beautician email:", beauticianEmail || "NOT SET");
+  if (beauticianEmail) {
+    console.log("[MAILER] Preparing beautician notification email...");
+
+    const beauticianTextContent = `Hi ${beauticianName},
+
+You have a new booking!
+
+Service: ${serviceName}
+Client: ${appointment.client?.name || "Unknown"}
+Date & Time: ${startTime}
+Price: ${price}
+${
+  isDepositPayment
+    ? `Deposit: ${formatCurrency(
+        depositAmount,
+        currency
+      )}\nBooking Fee: ${formatCurrency(bookingFee, currency)}\nTotal Paid: ${formatCurrency(
+        depositAmount + bookingFee,
+        currency
+      )}\nRemaining Balance: ${formatCurrency(remainingBalance, currency)} (to be collected at salon)`
+    : `Payment: ${paymentStatus}`
+}
+
+Client Contact:
+Email: ${appointment.client?.email || "N/A"}
+Phone: ${appointment.client?.phone || "N/A"}
+
+${
+  appointment.client?.notes
+    ? `Client Notes: ${appointment.client.notes}\n\n`
+    : ""
+}Appointment ID: ${appointment._id}
+
+Please ensure you're prepared for this appointment.`;
+
+    const beauticianHtmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #9333ea; border-bottom: 2px solid #9333ea; padding-bottom: 10px;">📅 New Booking Received</h2>
+        <p>Hi ${beauticianName},</p>
+        <p style="font-size: 16px; color: #374151; font-weight: 600;">You have a new booking!</p>
+        
+        <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #9333ea;">
+          <h3 style="margin-top: 0; color: #1f2937;">Appointment Details</h3>
+          <p style="margin: 8px 0;"><strong>Service:</strong> ${serviceName}</p>
+          <p style="margin: 8px 0;"><strong>Client:</strong> ${
+            appointment.client?.name || "Unknown"
+          }</p>
+          <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startTime}</p>
+          <p style="margin: 8px 0;"><strong>Price:</strong> ${price}</p>
+          ${
+            isDepositPayment
+              ? `
+          <div style="background-color: #ecfdf5; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #10b981;">
+            <p style="margin: 0 0 8px 0; color: #065f46; font-weight: 600; font-size: 14px;">💳 Payment Details</p>
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Deposit: <strong>${formatCurrency(
+              depositAmount,
+              currency
+            )}</strong></p>
+            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
+              bookingFee,
+              currency
+            )}</strong></p>
+            <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: ${formatCurrency(
+              depositAmount + bookingFee,
+              currency
+            )}</p>
+          </div>
+          <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 12px; border-left: 3px solid #f59e0b;">
+            <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">💰 To Collect at Salon</p>
+            <p style="margin: 8px 0 0 0; color: #b45309; font-size: 15px; font-weight: 700;">${formatCurrency(
+              remainingBalance,
+              currency
+            )}</p>
+          </div>
+          `
+              : `<p style="margin: 8px 0;"><strong>Payment:</strong> ${paymentStatus}</p>`
+          }
+        </div>
+        
+        <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+          <h4 style="margin-top: 0; color: #1e40af;">Client Contact</h4>
+          <p style="margin: 5px 0;"><strong>Email:</strong> ${
+            appointment.client?.email || "N/A"
+          }</p>
+          <p style="margin: 5px 0;"><strong>Phone:</strong> ${
+            appointment.client?.phone || "N/A"
+          }</p>
+        </div>
+        
+        ${
+          appointment.client?.notes
+            ? `
+        <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+          <h4 style="margin-top: 0; color: #92400e;">📝 Client Notes</h4>
+          <p style="margin: 0; color: #b45309;">${appointment.client.notes}</p>
+        </div>
+        `
+            : ""
+        }
+        
+        <p style="margin-top: 30px; color: #374151;">Please ensure you're prepared for this appointment.</p>
+        
+        <p style="color: #9ca3af; font-size: 11px; margin-top: 30px;">Appointment ID: ${
+          appointment._id
+        }</p>
+      </div>
+    `;
+
+    console.log("[MAILER] Sending beautician notification to:", beauticianEmail);
+    try {
+      const info = await tx.sendMail({
+        from,
+        to: beauticianEmail,
+        subject: `New Booking - ${serviceName} on ${startTime}`,
+        text: beauticianTextContent,
+        html: beauticianHtmlContent,
+      });
+      console.log(
+        "[MAILER] ✓ Beautician notification email sent successfully. MessageId:",
+        info.messageId
+      );
+    } catch (error) {
+      console.error("[MAILER] ✗ Failed to send beautician notification email:", error);
+      // Don't throw - beautician notification failure shouldn't block the customer confirmation
+    }
+  }
 }
 
 /**
