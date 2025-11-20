@@ -792,11 +792,22 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Only allow deleting pending orders
-    if (order.orderStatus !== "pending") {
-      return res.status(400).json({
-        error: "Can only delete pending orders",
-      });
+    // Restore stock when deleting orders (except cancelled/refunded which already restored stock)
+    if (!["cancelled", "refunded"].includes(order.orderStatus)) {
+      for (const item of order.items) {
+        const product = await Product.findById(item.productId);
+        if (product) {
+          if (item.variantId && product.variants) {
+            const variant = product.variants.id(item.variantId);
+            if (variant) {
+              variant.stock += item.quantity;
+            }
+          } else {
+            product.stock += item.quantity;
+          }
+          await product.save();
+        }
+      }
     }
 
     await Order.findByIdAndDelete(req.params.id);
