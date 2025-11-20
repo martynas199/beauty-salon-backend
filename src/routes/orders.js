@@ -378,6 +378,7 @@ router.post("/checkout", async (req, res) => {
       currency: currency.toUpperCase(),
       paymentStatus: "pending",
       orderStatus: "pending",
+      ...(req.body.userId ? { userId: req.body.userId } : {}), // Add userId if provided
     });
 
     await order.save();
