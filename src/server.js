@@ -33,6 +33,7 @@ import analyticsRouter from "./routes/analytics.js";
 import shippingRouter from "./routes/shipping.js";
 import subscriptionsRouter from "./routes/subscriptions.js";
 import wishlistRouter from "./routes/wishlist.js";
+import blogPostsRouter from "./routes/blogPosts.js";
 import {
   apiLimiter,
   authLimiter,
@@ -131,6 +132,7 @@ app.use("/api/salon", readLimiter, salonRouter);
 app.use("/api/hero-sections", readLimiter, heroSectionsRouter);
 app.use("/api/products", readLimiter, productsRouter);
 app.use("/api/about-us", aboutUsRouter);
+app.use("/api/blog-posts", readLimiter, blogPostsRouter);
 
 // Customer profile routes (protected)
 app.use("/api/users", usersRouter);

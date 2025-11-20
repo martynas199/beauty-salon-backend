@@ -476,10 +476,16 @@ ${
     ? `Deposit: ${formatCurrency(
         depositAmount,
         currency
-      )}\nBooking Fee: ${formatCurrency(bookingFee, currency)}\nTotal Paid: ${formatCurrency(
+      )}\nBooking Fee: ${formatCurrency(
+        bookingFee,
+        currency
+      )}\nTotal Paid: ${formatCurrency(
         depositAmount + bookingFee,
         currency
-      )}\nRemaining Balance: ${formatCurrency(remainingBalance, currency)} (to be collected at salon)`
+      )}\nRemaining Balance: ${formatCurrency(
+        remainingBalance,
+        currency
+      )} (to be collected at salon)`
     : `Payment: ${paymentStatus}`
 }
 
@@ -568,7 +574,10 @@ Please ensure you're prepared for this appointment.`;
       </div>
     `;
 
-    console.log("[MAILER] Sending beautician notification to:", beauticianEmail);
+    console.log(
+      "[MAILER] Sending beautician notification to:",
+      beauticianEmail
+    );
     try {
       const info = await tx.sendMail({
         from,
@@ -582,7 +591,10 @@ Please ensure you're prepared for this appointment.`;
         info.messageId
       );
     } catch (error) {
-      console.error("[MAILER] ✗ Failed to send beautician notification email:", error);
+      console.error(
+        "[MAILER] ✗ Failed to send beautician notification email:",
+        error
+      );
       // Don't throw - beautician notification failure shouldn't block the customer confirmation
     }
   }
