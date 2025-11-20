@@ -182,6 +182,16 @@ const OrderSchema = new Schema(
       ],
       default: "pending",
     },
+    collectionStatus: {
+      type: String,
+      enum: ["pending", "ready", "collected"],
+      default: "pending",
+      // Only relevant when isCollection is true
+    },
+    collectionReadyAt: {
+      type: Date,
+      // Timestamp when order was marked as ready for collection
+    },
     stripePaymentIntentId: {
       type: String,
       default: "",

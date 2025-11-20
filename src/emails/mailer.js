@@ -1066,9 +1066,268 @@ View in admin panel to process this order.`,
   }
 }
 
+/**
+ * Send order ready for collection notification to customer
+ */
+export async function sendOrderReadyForCollectionEmail({ order }) {
+  console.log(
+    "[MAILER] sendOrderReadyForCollectionEmail called for order:",
+    order?._id
+  );
+  const tx = getTransport();
+  if (!tx) {
+    console.warn(
+      "[MAILER] No transport - skipping collection ready notification"
+    );
+    return;
+  }
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  console.log("[MAILER] Sending from:", from);
+
+  const customerEmail = order.shippingAddress?.email;
+  console.log("[MAILER] Customer email:", customerEmail || "NOT SET");
+  if (!customerEmail) {
+    console.warn(
+      "[MAILER] No customer email - skipping collection ready notification"
+    );
+    return;
+  }
+
+  const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
+  const currency = order.currency || "GBP";
+  const totalPrice = formatCurrency(order.total || 0, currency);
+
+  // Build items list
+  const itemsText = order.items
+    .map(
+      (item) =>
+        `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
+          item.quantity
+        }`
+    )
+    .join("\n");
+
+  const itemsHtml = order.items
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          ${
+            item.image
+              ? `<img src="${item.image}" alt="${item.title}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;" />`
+              : ""
+          }
+          <div>
+            <div style="font-weight: 600; color: #1f2937;">${item.title}</div>
+            ${
+              item.size
+                ? `<div style="font-size: 13px; color: #6b7280;">${item.size}</div>`
+                : ""
+            }
+          </div>
+        </div>
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center; color: #6b7280;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: #1f2937;">
+        ${formatCurrency((item.price || 0) * item.quantity, currency)}
+      </td>
+    </tr>
+  `
+    )
+    .join("");
+
+  const collectionAddress =
+    order.collectionAddress || "12 Blackfriars Rd, Wisbech PE13 1AT";
+
+  const textContent = `Hi ${customerName},
+
+Great news! Your order is now ready for collection! 🎉
+
+Order Number: ${order.orderNumber}
+Total: ${totalPrice}
+
+Items Ready for Collection:
+${itemsText}
+
+Collection Address:
+${collectionAddress}
+
+Opening Hours:
+Monday - Sunday: 9:00 AM - 5:00 PM
+
+Please collect your order during our opening hours. Don't forget to bring your order number: ${order.orderNumber}
+
+If you have any questions, please contact us at +44 7928 775746.
+
+Thank you for shopping with Noble Elegance!
+
+Best regards,
+Noble Elegance Team
+12 Blackfriars Rd, Wisbech PE13 1AT
+Phone: +44 7928 775746`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #fad24e 0%, #d4a710 100%); padding: 40px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              🎉 Your Order is Ready!
+            </h1>
+            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
+              Come and collect it at your convenience
+            </p>
+          </div>
+
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hi <strong>${customerName}</strong>,
+            </p>
+            
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+              Great news! Your order is now ready for collection at Noble Elegance. We've carefully prepared everything for you.
+            </p>
+
+            <!-- Order Details Box -->
+            <div style="background-color: #fef3c7; border-left: 4px solid #fad24e; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="color: #92400e; font-weight: 600; font-size: 14px;">ORDER NUMBER</span>
+                <span style="color: #1f2937; font-weight: 700; font-size: 18px; font-family: monospace;">${
+                  order.orderNumber
+                }</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: #92400e; font-weight: 600; font-size: 14px;">TOTAL PAID</span>
+                <span style="color: #1f2937; font-weight: 700; font-size: 18px;">${totalPrice}</span>
+              </div>
+            </div>
+
+            <!-- Items Table -->
+            <h2 style="color: #1f2937; font-size: 18px; margin: 0 0 15px 0; font-weight: 600;">
+              Your Items
+            </h2>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; background-color: #f9fafb; border-radius: 8px; overflow: hidden;">
+              <thead>
+                <tr style="background-color: #f3f4f6;">
+                  <th style="padding: 12px; text-align: left; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase;">Item</th>
+                  <th style="padding: 12px; text-align: center; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase;">Qty</th>
+                  <th style="padding: 12px; text-align: right; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <!-- Collection Address Box -->
+            <div style="background-color: #eff6ff; border: 2px solid #93c5fd; border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+              <h2 style="color: #1e40af; font-size: 18px; margin: 0 0 15px 0; font-weight: 600;">
+                📍 Collection Address
+              </h2>
+              <p style="color: #1f2937; font-size: 16px; font-weight: 600; margin: 0 0 5px 0; line-height: 1.5;">
+                Noble Elegance Beauty Salon
+              </p>
+              <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">
+                ${collectionAddress}
+              </p>
+              
+              <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #bfdbfe;">
+                <h3 style="color: #1e40af; font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">
+                  🕒 Opening Hours
+                </h3>
+                <p style="color: #1f2937; font-size: 14px; margin: 0; line-height: 1.8;">
+                  <strong>Monday - Sunday:</strong> 9:00 AM - 5:00 PM
+                </p>
+              </div>
+
+              <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #bfdbfe;">
+                <h3 style="color: #1e40af; font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">
+                  📞 Contact Us
+                </h3>
+                <p style="color: #1f2937; font-size: 14px; margin: 0; line-height: 1.8;">
+                  Phone: <a href="tel:+447928775746" style="color: #2563eb; text-decoration: none; font-weight: 600;">+44 7928 775746</a>
+                </p>
+              </div>
+            </div>
+
+            <!-- Important Info -->
+            <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+              <p style="color: #991b1b; font-size: 14px; margin: 0; font-weight: 600;">
+                ⚠️ Important Reminder
+              </p>
+              <p style="color: #7f1d1d; font-size: 13px; margin: 8px 0 0 0; line-height: 1.6;">
+                Please bring your order number (<strong>${
+                  order.orderNumber
+                }</strong>) when collecting your items. This helps us serve you quickly and efficiently.
+              </p>
+            </div>
+
+            <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+              We look forward to seeing you soon! If you have any questions or need to reschedule your collection, please don't hesitate to contact us.
+            </p>
+
+            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+              Best regards,<br>
+              <strong style="color: #1f2937;">The Noble Elegance Team</strong>
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 13px; margin: 0 0 10px 0;">
+              Noble Elegance Beauty Salon<br>
+              12 Blackfriars Rd, Wisbech PE13 1AT<br>
+              Phone: +44 7928 775746
+            </p>
+            <p style="color: #9ca3af; font-size: 11px; margin: 15px 0 0 0;">
+              Order ID: ${String(order._id)}
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  try {
+    console.log(
+      "[MAILER] Sending collection ready notification to:",
+      customerEmail
+    );
+    const info = await tx.sendMail({
+      from,
+      to: customerEmail,
+      subject: `✅ Your Order ${order.orderNumber} is Ready for Collection!`,
+      text: textContent,
+      html: htmlContent,
+    });
+    console.log(
+      "[MAILER] ✓ Collection ready email sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error(
+      "[MAILER] ✗ Failed to send collection ready notification:",
+      error
+    );
+    throw error;
+  }
+}
+
 export default {
   sendCancellationEmails,
   sendConfirmationEmail,
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
+  sendOrderReadyForCollectionEmail,
 };

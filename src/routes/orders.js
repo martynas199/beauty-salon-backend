@@ -6,6 +6,7 @@ import Beautician from "../models/Beautician.js";
 import {
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
+  sendOrderReadyForCollectionEmail,
 } from "../emails/mailer.js";
 
 const router = Router();
@@ -714,6 +715,71 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     console.error("Error updating order:", error);
     res.status(400).json({ error: error.message });
+  }
+});
+
+// PATCH /api/orders/:id/ready-for-collection - Mark collection order as ready
+router.patch("/:id/ready-for-collection", async (req, res) => {
+  try {
+    console.log(
+      "[ORDERS] Marking order as ready for collection:",
+      req.params.id
+    );
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Verify this is a collection order
+    if (!order.isCollection) {
+      return res.status(400).json({
+        error: "This is not a collection order",
+        message: "Only collection orders can be marked as ready for collection",
+      });
+    }
+
+    // Check if already ready or collected
+    if (order.collectionStatus === "ready") {
+      return res.status(400).json({
+        error: "Order is already marked as ready for collection",
+      });
+    }
+
+    if (order.collectionStatus === "collected") {
+      return res.status(400).json({
+        error: "Order has already been collected",
+      });
+    }
+
+    // Update collection status
+    order.collectionStatus = "ready";
+    order.collectionReadyAt = new Date();
+    await order.save();
+
+    console.log("[ORDERS] ✓ Order marked as ready for collection");
+
+    // Send email notification to customer
+    try {
+      await sendOrderReadyForCollectionEmail({ order });
+      console.log("[ORDERS] ✓ Collection ready email sent to customer");
+    } catch (emailError) {
+      console.error(
+        "[ORDERS] ✗ Failed to send collection ready email:",
+        emailError
+      );
+      // Don't fail the request if email fails
+    }
+
+    res.json({
+      success: true,
+      message: "Order marked as ready for collection and customer notified",
+      data: order,
+    });
+  } catch (error) {
+    console.error("[ORDERS] Error marking order ready for collection:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
