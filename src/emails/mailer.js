@@ -824,6 +824,201 @@ Order ID: ${order._id}`;
 }
 
 /**
+ * Send beautician notification for product orders containing their products
+ */
+export async function sendBeauticianProductOrderNotification({
+  order,
+  beautician,
+  beauticianItems,
+}) {
+  console.log(
+    "[MAILER] sendBeauticianProductOrderNotification called for order:",
+    order?._id,
+    "beautician:",
+    beautician?.name
+  );
+  const tx = getTransport();
+  if (!tx) {
+    console.warn(
+      "[MAILER] No transport - skipping beautician product notification"
+    );
+    return;
+  }
+
+  const beauticianEmail = beautician?.email;
+  console.log("[MAILER] Beautician email:", beauticianEmail || "NOT SET");
+  if (!beauticianEmail) {
+    console.warn(
+      "[MAILER] No beautician email - skipping beautician product notification"
+    );
+    return;
+  }
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const customerName = `${order.shippingAddress.firstName} ${order.shippingAddress.lastName}`;
+  const currency = order.currency || "GBP";
+
+  // Calculate totals for beautician's items only
+  const beauticianTotal = beauticianItems.reduce(
+    (sum, item) => sum + (item.price || 0) * item.quantity,
+    0
+  );
+  const beauticianTotalFormatted = formatCurrency(beauticianTotal, currency);
+
+  const itemsList = beauticianItems
+    .map(
+      (item) =>
+        `- ${item.title}${item.size ? ` (${item.size})` : ""} x ${
+          item.quantity
+        } - ${formatCurrency((item.price || 0) * item.quantity, currency)}`
+    )
+    .join("\n");
+
+  const itemsHtml = beauticianItems
+    .map(
+      (item) => `
+    <li style="margin: 8px 0; color: #374151; padding: 12px; background-color: #f9fafb; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+      <span>
+        <strong>${item.title}</strong>${item.size ? ` (${item.size})` : ""} x ${
+        item.quantity
+      }
+      </span>
+      <span style="font-weight: 600; color: #9333ea;">${formatCurrency(
+        (item.price || 0) * item.quantity,
+        currency
+      )}</span>
+    </li>`
+    )
+    .join("");
+
+  const textContent = `Hi ${beautician.name},
+
+Great news! Your products have been ordered! 🎉
+
+Order Number: ${order.orderNumber}
+Your Products Total: ${beauticianTotalFormatted}
+
+YOUR PRODUCTS IN THIS ORDER:
+${itemsList}
+
+Customer Information:
+${customerName}
+Email: ${order.shippingAddress.email}
+Phone: ${order.shippingAddress.phone}
+
+Shipping Address:
+${order.shippingAddress.address}
+${order.shippingAddress.city}, ${order.shippingAddress.postalCode}
+${order.shippingAddress.country}
+
+The admin will process and fulfill this order. You'll receive your commission once the order is marked as delivered.
+
+Order ID: ${order._id}
+
+Thank you for offering your products on our platform!
+
+Best regards,
+Noble Elegance Team`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #9333ea; border-bottom: 2px solid #9333ea; padding-bottom: 10px;">🎉 Your Products Have Been Ordered!</h2>
+      
+      <p style="font-size: 16px; color: #374151; margin: 20px 0;">Hi <strong>${
+        beautician.name
+      }</strong>,</p>
+      
+      <p style="color: #374151; margin-bottom: 20px;">Great news! A customer has ordered your products from Noble Elegance!</p>
+      
+      <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #fad24e;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <span style="color: #92400e; font-weight: 600;">Order Number:</span>
+          <span style="font-weight: 700; color: #1f2937; font-family: monospace;">${
+            order.orderNumber
+          }</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #92400e; font-weight: 600;">Your Products Total:</span>
+          <span style="font-weight: 700; color: #9333ea; font-size: 18px;">${beauticianTotalFormatted}</span>
+        </div>
+      </div>
+      
+      <h3 style="color: #1f2937; margin-top: 30px; margin-bottom: 15px;">Your Products in This Order</h3>
+      <ul style="list-style: none; padding: 0; margin: 0 0 20px 0;">
+        ${itemsHtml}
+      </ul>
+      
+      <h3 style="color: #1f2937; margin-top: 30px; margin-bottom: 15px;">Customer Information</h3>
+      <div style="background-color: #eff6ff; padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+        <p style="margin: 0; font-weight: 600; color: #1f2937;">${customerName}</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">📧 ${
+          order.shippingAddress.email
+        }</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">📞 ${
+          order.shippingAddress.phone
+        }</p>
+      </div>
+      
+      <h3 style="color: #1f2937; margin-top: 25px; margin-bottom: 15px;">Shipping Address</h3>
+      <div style="background-color: #f9fafb; padding: 15px; border-radius: 8px;">
+        <p style="margin: 0; color: #374151;">${
+          order.shippingAddress.address
+        }</p>
+        <p style="margin: 5px 0 0 0; color: #374151;">${
+          order.shippingAddress.city
+        }, ${order.shippingAddress.postalCode}</p>
+        <p style="margin: 5px 0 0 0; color: #374151;">${
+          order.shippingAddress.country
+        }</p>
+      </div>
+      
+      <div style="background-color: #ecfdf5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
+        <p style="margin: 0; color: #065f46; font-weight: 600;">💰 Commission Information</p>
+        <p style="margin: 10px 0 0 0; color: #047857; font-size: 14px;">The admin will process and fulfill this order. You'll receive your commission once the order is marked as delivered.</p>
+      </div>
+      
+      <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">Thank you for offering your products on our platform!</p>
+      
+      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">Best regards,</p>
+        <p style="margin: 5px 0 0 0; color: #9333ea; font-weight: bold;">Noble Elegance Team</p>
+        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px;">Order ID: ${String(
+          order._id
+        )}</p>
+      </div>
+    </div>
+  `;
+
+  console.log(
+    "[MAILER] Sending beautician product notification to:",
+    beauticianEmail
+  );
+  console.log("[MAILER] Order number:", order.orderNumber);
+  console.log("[MAILER] Beautician items count:", beauticianItems.length);
+  console.log("[MAILER] Beautician total:", beauticianTotalFormatted);
+
+  try {
+    const info = await tx.sendMail({
+      from,
+      to: beauticianEmail,
+      subject: `🎉 Your Products Sold! Order #${order.orderNumber} - ${beauticianTotalFormatted}`,
+      text: textContent,
+      html: htmlContent,
+    });
+    console.log(
+      "[MAILER] ✓ Beautician product notification sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error(
+      "[MAILER] ✗ Failed to send beautician product notification:",
+      error
+    );
+    // Don't throw - beautician notification failure shouldn't block other emails
+  }
+}
+
+/**
  * Send admin notification for new product order
  */
 export async function sendAdminOrderNotification({ order }) {
@@ -1329,5 +1524,6 @@ export default {
   sendConfirmationEmail,
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
+  sendBeauticianProductOrderNotification,
   sendOrderReadyForCollectionEmail,
 };

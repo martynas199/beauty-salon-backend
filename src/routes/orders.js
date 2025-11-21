@@ -7,6 +7,7 @@ import {
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
   sendOrderReadyForCollectionEmail,
+  sendBeauticianProductOrderNotification,
 } from "../emails/mailer.js";
 
 const router = Router();
@@ -187,8 +188,41 @@ router.get("/confirm-checkout", async (req, res) => {
       );
 
       // Send admin notification email
-      await sendAdminOrderNotification({ order: populatedOrder });
-      console.log("[ORDER CONFIRM] Admin notification email sent");
+
+      // Send notifications to beauticians for their products
+      const itemsByBeautician = {};
+      for (const item of populatedOrder.items) {
+        const beauticianId = item.productId?.beauticianId;
+        if (beauticianId) {
+          const beauticianIdStr = beauticianId.toString();
+          if (!itemsByBeautician[beauticianIdStr]) {
+            itemsByBeautician[beauticianIdStr] = [];
+          }
+          itemsByBeautician[beauticianIdStr].push(item);
+        }
+      }
+
+      for (const [beauticianId, items] of Object.entries(itemsByBeautician)) {
+        try {
+          const beautician = await Beautician.findById(beauticianId);
+          if (beautician?.email) {
+            await sendBeauticianProductOrderNotification({
+              order: populatedOrder,
+              beautician,
+              beauticianItems: items,
+            });
+            console.log(
+              `[ORDER CONFIRM] Beautician notification sent to ${beautician.email} for ${items.length} product(s)`
+            );
+          }
+        } catch (beauticianEmailErr) {
+          console.error(
+            `[ORDER CONFIRM] Failed to send beautician notification to ${beauticianId}:`,
+            beauticianEmailErr
+          );
+          // Continue with other beauticians
+        }
+      }
     } catch (emailErr) {
       console.error("[ORDER CONFIRM] Failed to send order emails:", emailErr);
       // Don't fail the request if email fails

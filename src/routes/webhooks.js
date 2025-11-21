@@ -7,6 +7,7 @@ import {
   sendConfirmationEmail,
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
+  sendBeauticianProductOrderNotification,
 } from "../emails/mailer.js";
 
 const r = Router();
@@ -166,6 +167,43 @@ r.post("/stripe", async (req, res) => {
                   "[WEBHOOK] Failed to send admin notification:",
                   emailErr
                 );
+              }
+
+              // Send notifications to beauticians for their products
+              const itemsByBeautician = {};
+              for (const item of order.items) {
+                const beauticianId = item.productId?.beauticianId;
+                if (beauticianId) {
+                  const beauticianIdStr = beauticianId.toString();
+                  if (!itemsByBeautician[beauticianIdStr]) {
+                    itemsByBeautician[beauticianIdStr] = [];
+                  }
+                  itemsByBeautician[beauticianIdStr].push(item);
+                }
+              }
+
+              for (const [beauticianId, items] of Object.entries(
+                itemsByBeautician
+              )) {
+                try {
+                  const beautician = await Beautician.findById(beauticianId);
+                  if (beautician?.email) {
+                    await sendBeauticianProductOrderNotification({
+                      order,
+                      beautician,
+                      beauticianItems: items,
+                    });
+                    console.log(
+                      `[WEBHOOK] Beautician notification sent to ${beautician.email} for ${items.length} product(s) in order ${orderId}`
+                    );
+                  }
+                } catch (beauticianEmailErr) {
+                  console.error(
+                    `[WEBHOOK] Failed to send beautician notification to ${beauticianId}:`,
+                    beauticianEmailErr
+                  );
+                  // Continue with other beauticians
+                }
               }
             }
           } catch (e) {
