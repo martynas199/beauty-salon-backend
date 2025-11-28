@@ -294,4 +294,123 @@ router.delete("/:id/images/:imageIndex", async (req, res) => {
   }
 });
 
+// POST /api/products/apply-black-friday - Apply 15% Black Friday discount to all products
+router.post("/apply-black-friday", async (req, res) => {
+  try {
+    const products = await Product.find({});
+    let updatedCount = 0;
+
+    for (const product of products) {
+      let updated = false;
+
+      // Update variants if they exist
+      if (product.variants && product.variants.length > 0) {
+        for (const variant of product.variants) {
+          // Only apply if not already discounted
+          if (!variant.originalPrice || variant.originalPrice === variant.price) {
+            variant.originalPrice = variant.price;
+            variant.price = Math.round(variant.price * 0.85 * 100) / 100; // 15% discount, round to 2 decimals
+            updated = true;
+          }
+
+          if (!variant.originalPriceEUR || variant.originalPriceEUR === variant.priceEUR) {
+            variant.originalPriceEUR = variant.priceEUR;
+            variant.priceEUR = Math.round(variant.priceEUR * 0.85 * 100) / 100;
+            updated = true;
+          }
+        }
+      }
+
+      // Update legacy price fields (for products without variants)
+      if (!product.variants || product.variants.length === 0) {
+        if (!product.originalPrice || product.originalPrice === product.price) {
+          product.originalPrice = product.price;
+          product.price = Math.round(product.price * 0.85 * 100) / 100;
+          updated = true;
+        }
+
+        if (!product.originalPriceEUR || product.originalPriceEUR === product.priceEUR) {
+          product.originalPriceEUR = product.priceEUR;
+          product.priceEUR = Math.round(product.priceEUR * 0.85 * 100) / 100;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        await product.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Black Friday discount applied to ${updatedCount} products`,
+      updatedCount,
+      totalProducts: products.length,
+    });
+  } catch (error) {
+    console.error("Error applying Black Friday discount:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/products/remove-black-friday - Remove Black Friday discount from all products
+router.post("/remove-black-friday", async (req, res) => {
+  try {
+    const products = await Product.find({});
+    let updatedCount = 0;
+
+    for (const product of products) {
+      let updated = false;
+
+      // Restore variants if they have originalPrice set
+      if (product.variants && product.variants.length > 0) {
+        for (const variant of product.variants) {
+          if (variant.originalPrice && variant.originalPrice > variant.price) {
+            variant.price = variant.originalPrice;
+            variant.originalPrice = undefined;
+            updated = true;
+          }
+
+          if (variant.originalPriceEUR && variant.originalPriceEUR > variant.priceEUR) {
+            variant.priceEUR = variant.originalPriceEUR;
+            variant.originalPriceEUR = undefined;
+            updated = true;
+          }
+        }
+      }
+
+      // Restore legacy price fields
+      if (!product.variants || product.variants.length === 0) {
+        if (product.originalPrice && product.originalPrice > product.price) {
+          product.price = product.originalPrice;
+          product.originalPrice = undefined;
+          updated = true;
+        }
+
+        if (product.originalPriceEUR && product.originalPriceEUR > product.priceEUR) {
+          product.priceEUR = product.originalPriceEUR;
+          product.originalPriceEUR = undefined;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        await product.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Black Friday discount removed from ${updatedCount} products`,
+      updatedCount,
+      totalProducts: products.length,
+    });
+  } catch (error) {
+    console.error("Error removing Black Friday discount:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
