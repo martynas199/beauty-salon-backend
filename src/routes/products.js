@@ -307,13 +307,19 @@ router.post("/apply-black-friday", async (req, res) => {
       if (product.variants && product.variants.length > 0) {
         for (const variant of product.variants) {
           // Only apply if not already discounted
-          if (!variant.originalPrice || variant.originalPrice === variant.price) {
+          if (
+            !variant.originalPrice ||
+            variant.originalPrice === variant.price
+          ) {
             variant.originalPrice = variant.price;
             variant.price = Math.round(variant.price * 0.85 * 100) / 100; // 15% discount, round to 2 decimals
             updated = true;
           }
 
-          if (!variant.originalPriceEUR || variant.originalPriceEUR === variant.priceEUR) {
+          if (
+            !variant.originalPriceEUR ||
+            variant.originalPriceEUR === variant.priceEUR
+          ) {
             variant.originalPriceEUR = variant.priceEUR;
             variant.priceEUR = Math.round(variant.priceEUR * 0.85 * 100) / 100;
             updated = true;
@@ -329,7 +335,10 @@ router.post("/apply-black-friday", async (req, res) => {
           updated = true;
         }
 
-        if (!product.originalPriceEUR || product.originalPriceEUR === product.priceEUR) {
+        if (
+          !product.originalPriceEUR ||
+          product.originalPriceEUR === product.priceEUR
+        ) {
           product.originalPriceEUR = product.priceEUR;
           product.priceEUR = Math.round(product.priceEUR * 0.85 * 100) / 100;
           updated = true;
@@ -372,7 +381,10 @@ router.post("/remove-black-friday", async (req, res) => {
             updated = true;
           }
 
-          if (variant.originalPriceEUR && variant.originalPriceEUR > variant.priceEUR) {
+          if (
+            variant.originalPriceEUR &&
+            variant.originalPriceEUR > variant.priceEUR
+          ) {
             variant.priceEUR = variant.originalPriceEUR;
             variant.originalPriceEUR = undefined;
             updated = true;
@@ -388,7 +400,10 @@ router.post("/remove-black-friday", async (req, res) => {
           updated = true;
         }
 
-        if (product.originalPriceEUR && product.originalPriceEUR > product.priceEUR) {
+        if (
+          product.originalPriceEUR &&
+          product.originalPriceEUR > product.priceEUR
+        ) {
           product.priceEUR = product.originalPriceEUR;
           product.originalPriceEUR = undefined;
           updated = true;

@@ -44,6 +44,8 @@ const PaymentSchema = new mongoose.Schema(
       default: "unpaid",
     },
     sessionId: String,
+    checkoutSessionId: String, // For manual appointment deposit payments
+    checkoutUrl: String, // URL for customer to pay deposit
     amountTotal: { type: Number, default: 0 },
     amountDeposit: { type: Number },
     amountBalance: { type: Number },

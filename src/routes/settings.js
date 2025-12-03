@@ -90,7 +90,8 @@ r.patch("/", requireAdmin, async (req, res, next) => {
       if (salonPhone !== undefined) settings.salonPhone = salonPhone;
       if (salonEmail !== undefined) settings.salonEmail = salonEmail;
       if (heroImage !== undefined) settings.heroImage = heroImage;
-      if (christmasThemeEnabled !== undefined) settings.christmasThemeEnabled = christmasThemeEnabled;
+      if (christmasThemeEnabled !== undefined)
+        settings.christmasThemeEnabled = christmasThemeEnabled;
 
       await settings.save();
     }

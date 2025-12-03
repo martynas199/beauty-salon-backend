@@ -9,7 +9,9 @@ import { refundPayment } from "../payments/stripe.js";
 import {
   sendCancellationEmails,
   sendConfirmationEmail,
+  sendDepositPaymentEmail,
 } from "../emails/mailer.js";
+import stripe from "../payments/stripe.js";
 const r = Router();
 
 r.get("/", async (req, res) => {
@@ -140,16 +142,30 @@ r.post("/", async (req, res) => {
   }).lean();
   if (conflict)
     return res.status(409).json({ error: "Slot no longer available" });
-  const isInSalon = String(mode).toLowerCase() === "pay_in_salon";
+
+  const modeStr = String(mode).toLowerCase();
+  const isInSalon = modeStr === "pay_in_salon";
+  const isDeposit = modeStr === "deposit";
+
   const status = isInSalon ? "confirmed" : "reserved_unpaid";
-  const payment = isInSalon
-    ? {
-        mode: "pay_in_salon",
-        provider: "cash",
-        status: "unpaid",
-        amountTotal: Math.round(Number(variant.price || 0) * 100),
-      }
-    : undefined;
+
+  let payment = undefined;
+  if (isInSalon) {
+    payment = {
+      mode: "pay_in_salon",
+      provider: "cash",
+      status: "unpaid",
+      amountTotal: Math.round(Number(variant.price || 0) * 100),
+    };
+  } else if (isDeposit) {
+    payment = {
+      mode: "deposit",
+      provider: "stripe",
+      status: "unpaid",
+      amountTotal: Math.round(Number(variant.price || 0) * 100),
+    };
+  }
+
   const appt = await Appointment.create({
     client,
     beauticianId: beautician._id,
@@ -163,7 +179,100 @@ r.post("/", async (req, res) => {
     ...(payment ? { payment } : {}),
   });
 
-  // Send confirmation email to customer
+  // Handle deposit mode: create checkout session and send email
+  if (isDeposit) {
+    try {
+      // Check if beautician has Stripe Connect
+      if (!beautician.stripeAccountId) {
+        console.error("Beautician has no Stripe account for deposit");
+        // Still create appointment but don't send payment link
+        return res.json({
+          ok: true,
+          appointmentId: appt._id,
+          warning:
+            "Beautician has no Stripe account. Cannot send deposit payment link.",
+        });
+      }
+
+      // Calculate deposit amount (default 50% of service price, can be customized)
+      const depositPercent = Number(req.body.depositPercent || 50);
+      const depositAmount = Number(variant.price || 0) * (depositPercent / 100);
+      const platformFee = 0.5; // £0.50 booking fee
+      const totalAmount = depositAmount + platformFee;
+
+      // Create Stripe Checkout Session
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "gbp",
+              product_data: {
+                name: `Deposit for ${service.name} - ${variant.name}`,
+                description: `With ${beautician.name}`,
+              },
+              unit_amount: Math.round(depositAmount * 100),
+            },
+            quantity: 1,
+          },
+          {
+            price_data: {
+              currency: "gbp",
+              product_data: {
+                name: "Booking Fee",
+                description: "Platform booking fee",
+              },
+              unit_amount: Math.round(platformFee * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-success`,
+        cancel_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-cancel`,
+        customer_email: client.email,
+        metadata: {
+          appointmentId: appt._id.toString(),
+          type: "manual_appointment_deposit",
+        },
+        payment_intent_data: {
+          application_fee_amount: Math.round(platformFee * 100),
+          transfer_data: {
+            destination: beautician.stripeAccountId,
+          },
+        },
+      });
+
+      // Update appointment with checkout details
+      appt.payment.checkoutSessionId = session.id;
+      appt.payment.checkoutUrl = session.url;
+      await appt.save();
+
+      // Send deposit payment email
+      await sendDepositPaymentEmail({
+        appointment: appt.toObject(),
+        service,
+        beautician,
+        depositAmount,
+        platformFee,
+        totalAmount,
+        remainingBalance: Number(variant.price || 0) - depositAmount,
+        checkoutUrl: session.url,
+      });
+
+      return res.json({ ok: true, appointmentId: appt._id });
+    } catch (depositError) {
+      console.error("Failed to create deposit checkout:", depositError);
+      // Appointment already created, just return it
+      return res.json({
+        ok: true,
+        appointmentId: appt._id,
+        warning: "Appointment created but failed to send deposit payment link.",
+      });
+    }
+  }
+
+  // Send confirmation email to customer (for non-deposit appointments)
   sendConfirmationEmail({
     appointment: appt.toObject(),
     service,
@@ -173,6 +282,224 @@ r.post("/", async (req, res) => {
   });
 
   res.json({ ok: true, appointmentId: appt._id });
+});
+
+// Create deposit checkout session for manual appointment
+r.post("/:id/create-deposit-checkout", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { depositAmount } = req.body; // Amount in main currency (e.g., 10.00 for £10)
+
+    const appt = await Appointment.findById(id);
+    if (!appt) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Get service and beautician info
+    const [service, beautician] = await Promise.all([
+      Service.findById(appt.serviceId).lean(),
+      Beautician.findById(appt.beauticianId).lean(),
+    ]);
+
+    if (!service || !beautician) {
+      return res.status(400).json({ error: "Service or beautician not found" });
+    }
+
+    // Check if beautician has Stripe Connect
+    if (!beautician.stripeAccountId) {
+      return res
+        .status(400)
+        .json({ error: "Beautician has no Stripe account" });
+    }
+
+    const stripe = (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY
+    );
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
+    const depositAmountInPence = Math.round(Number(depositAmount) * 100);
+    const totalAmountInPence = depositAmountInPence + platformFee;
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    // Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: `${service.name}${
+                appt.variantName ? ` - ${appt.variantName}` : ""
+              }`,
+              description: `Deposit for ${service.name} with ${beautician.name}`,
+            },
+            unit_amount: depositAmountInPence,
+          },
+          quantity: 1,
+        },
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: "Booking Fee",
+              description: "Platform booking fee",
+            },
+            unit_amount: platformFee,
+          },
+          quantity: 1,
+        },
+      ],
+      payment_intent_data: {
+        application_fee_amount: platformFee,
+        transfer_data: {
+          destination: beautician.stripeAccountId,
+        },
+      },
+      success_url: `${frontendUrl}/booking/${id}/deposit-success`,
+      cancel_url: `${frontendUrl}/booking/${id}/deposit-cancel`,
+      metadata: {
+        appointmentId: id.toString(),
+        beauticianId: beautician._id.toString(),
+        depositAmount: depositAmountInPence.toString(),
+        platformFee: platformFee.toString(),
+        type: "manual_appointment_deposit",
+      },
+    });
+
+    // Update appointment with checkout session info
+    appt.payment = {
+      mode: "deposit",
+      provider: "stripe",
+      status: "unpaid",
+      checkoutSessionId: session.id,
+      checkoutUrl: session.url,
+      amountDeposit: depositAmountInPence,
+      amountTotal: totalAmountInPence,
+      amountBalance: Math.round(appt.price * 100) - depositAmountInPence,
+      stripe: {
+        platformFee,
+        beauticianStripeAccount: beautician.stripeAccountId,
+      },
+    };
+    appt.status = "reserved_unpaid";
+    await appt.save();
+
+    res.json({
+      ok: true,
+      checkoutUrl: session.url,
+      sessionId: session.id,
+    });
+  } catch (err) {
+    console.error("Error creating deposit checkout session:", err);
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to create checkout session" });
+  }
+});
+
+// Send deposit payment email
+r.post("/:id/send-deposit-email", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appt = await Appointment.findById(id);
+
+    if (!appt) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    if (!appt.payment?.checkoutUrl) {
+      return res.status(400).json({
+        error: "No payment link available. Create checkout session first.",
+      });
+    }
+
+    const [service, beautician] = await Promise.all([
+      Service.findById(appt.serviceId).lean(),
+      Beautician.findById(appt.beauticianId).lean(),
+    ]);
+
+    // Send deposit payment email
+    const { sendDepositPaymentEmail } = await import("../emails/mailer.js");
+    await sendDepositPaymentEmail({
+      appointment: appt.toObject(),
+      service,
+      beautician,
+    });
+
+    res.json({ ok: true, message: "Deposit payment email sent" });
+  } catch (err) {
+    console.error("Error sending deposit email:", err);
+    res.status(500).json({ error: err.message || "Failed to send email" });
+  }
+});
+
+// TEMPORARY: Manual deposit confirmation (for local testing without webhooks)
+// TODO: Remove this in production - webhooks should handle this
+r.post("/:id/confirm-deposit-payment", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const appt = await Appointment.findById(id)
+      .populate("serviceId")
+      .populate("beauticianId");
+
+    if (!appt) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Retrieve payment intent from Stripe if we have a checkout session
+    if (appt.payment?.checkoutSessionId) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(
+          appt.payment.checkoutSessionId
+        );
+        if (session.payment_intent) {
+          appt.payment.stripe = appt.payment.stripe || {};
+          appt.payment.stripe.paymentIntentId = session.payment_intent;
+
+          // Get transfer info if available
+          const paymentIntent = await stripe.paymentIntents.retrieve(
+            session.payment_intent
+          );
+          if (paymentIntent.charges?.data?.[0]?.transfer) {
+            appt.payment.stripe.transferId =
+              paymentIntent.charges.data[0].transfer;
+          }
+        }
+      } catch (stripeErr) {
+        console.error(
+          "[MANUAL CONFIRM] Failed to retrieve Stripe session:",
+          stripeErr.message
+        );
+      }
+    }
+
+    // Update appointment to confirmed
+    appt.status = "confirmed";
+    appt.payment.status = "succeeded";
+
+    await appt.save();
+
+    console.log("[MANUAL CONFIRM] Appointment", id, "manually confirmed");
+
+    // Send confirmation email
+    await sendConfirmationEmail({
+      appointment: appt.toObject(),
+      service: appt.serviceId,
+      beautician: appt.beauticianId,
+    });
+
+    res.json({
+      ok: true,
+      message: "Payment confirmed manually",
+      appointment: appt,
+    });
+  } catch (err) {
+    console.error("Error confirming deposit:", err);
+    res.status(500).json({ error: err.message || "Failed to confirm payment" });
+  }
 });
 
 // Cancellation routes
@@ -218,13 +545,13 @@ r.post("/:id/cancel", async (req, res) => {
     let outcome;
     let stripeRefundId;
     let newStatus;
-    
+
     if (appt.status === "reserved_unpaid") {
       // Unpaid appointment - no refund needed
       outcome = {
         refundAmount: 0,
         outcomeStatus: "cancelled_no_refund",
-        reasonCode: "unpaid_appointment"
+        reasonCode: "unpaid_appointment",
       };
       newStatus = "cancelled_no_refund";
     } else {
@@ -235,7 +562,7 @@ r.post("/:id/cancel", async (req, res) => {
         now: new Date(),
         salonTz,
       });
-      
+
       if (outcome.refundAmount > 0 && appt.payment?.provider === "stripe") {
         const key = `cancel:${id}:${new Date(
           appt.updatedAt || appt.createdAt || Date.now()
@@ -257,7 +584,9 @@ r.post("/:id/cancel", async (req, res) => {
         }
       }
       newStatus =
-        outcome.refundAmount > 0 ? outcome.outcomeStatus : "cancelled_no_refund";
+        outcome.refundAmount > 0
+          ? outcome.outcomeStatus
+          : "cancelled_no_refund";
     }
     const update = {
       $set: {

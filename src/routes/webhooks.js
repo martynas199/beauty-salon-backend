@@ -68,27 +68,71 @@ r.post("/stripe", async (req, res) => {
         // Handle appointment confirmation
         if (apptId) {
           try {
-            const appointment = await Appointment.findByIdAndUpdate(
-              apptId,
-              {
-                $set: {
-                  status: "confirmed",
-                  "payment.status": "succeeded",
-                  "payment.provider": "stripe",
-                  "payment.mode": "pay_now",
-                  "payment.sessionId": session.id,
-                  ...(session.amount_total != null
-                    ? { "payment.amountTotal": Number(session.amount_total) }
-                    : {}),
-                },
-                $push: {
-                  audit: {
-                    at: new Date(),
-                    action: "webhook_checkout_completed",
-                    meta: { eventId: event.id },
-                  },
+            // Check if this is a manual appointment deposit payment
+            const isManualDeposit =
+              session.metadata?.type === "manual_appointment_deposit";
+
+            // Retrieve payment intent to get transfer info
+            let transferId = null;
+            if (session.payment_intent) {
+              try {
+                const stripe = getStripe();
+                const paymentIntent = await stripe.paymentIntents.retrieve(
+                  session.payment_intent
+                );
+                if (paymentIntent.transfer_data?.destination) {
+                  // For direct charges, check the latest charge
+                  if (paymentIntent.charges?.data?.[0]?.transfer) {
+                    transferId = paymentIntent.charges.data[0].transfer;
+                  }
+                }
+              } catch (err) {
+                console.error(
+                  "[WEBHOOK] Error retrieving payment intent:",
+                  err
+                );
+              }
+            }
+
+            const updateData = {
+              $set: {
+                status: "confirmed",
+                "payment.status": "succeeded",
+                "payment.provider": "stripe",
+                "payment.mode": isManualDeposit ? "deposit" : "pay_now",
+                "payment.sessionId": session.id,
+                ...(isManualDeposit
+                  ? { "payment.checkoutSessionId": session.id }
+                  : {}),
+                ...(session.amount_total != null
+                  ? { "payment.amountTotal": Number(session.amount_total) }
+                  : {}),
+                ...(session.payment_intent
+                  ? { "payment.stripe.paymentIntentId": session.payment_intent }
+                  : {}),
+                ...(transferId
+                  ? { "payment.stripe.transferId": transferId }
+                  : {}),
+              },
+              $push: {
+                audit: {
+                  at: new Date(),
+                  action: isManualDeposit
+                    ? "webhook_deposit_paid"
+                    : "webhook_checkout_completed",
+                  meta: { eventId: event.id, sessionId: session.id },
                 },
               },
+            };
+
+            console.log(
+              "[WEBHOOK] Updating appointment with:",
+              JSON.stringify(updateData, null, 2)
+            );
+
+            const appointment = await Appointment.findByIdAndUpdate(
+              apptId,
+              updateData,
               { new: true }
             )
               .populate("serviceId")
@@ -97,7 +141,13 @@ r.post("/stripe", async (req, res) => {
             console.log(
               "[WEBHOOK] Appointment",
               apptId,
-              "updated to confirmed"
+              isManualDeposit ? "deposit paid" : "updated to confirmed",
+              "- status:",
+              appointment?.status,
+              "payment.status:",
+              appointment?.payment?.status,
+              "payment.mode:",
+              appointment?.payment?.mode
             );
 
             // Send confirmation email
