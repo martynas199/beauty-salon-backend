@@ -42,10 +42,12 @@ const sendTokenResponse = (admin, statusCode, res) => {
     expires: new Date(Date.now() + JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000),
     httpOnly: true, // Cannot be accessed by client-side JavaScript
     secure: process.env.NODE_ENV === "production", // Only sent over HTTPS in production
-    sameSite: "lax", // CSRF protection
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" for cross-origin in production
   };
 
   // Send cookie and response
+  console.log("[sendTokenResponse] Cookie options:", cookieOptions);
+  console.log("[sendTokenResponse] Setting cookie with token");
   res
     .status(statusCode)
     .cookie("jwt", token, cookieOptions)
