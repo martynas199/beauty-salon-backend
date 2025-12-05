@@ -42,12 +42,10 @@ const sendTokenResponse = (admin, statusCode, res) => {
     expires: new Date(Date.now() + JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000),
     httpOnly: true, // Cannot be accessed by client-side JavaScript
     secure: process.env.NODE_ENV === "production", // Only sent over HTTPS in production
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // "none" for cross-origin in production
+    sameSite: "lax", // CSRF protection
   };
 
   // Send cookie and response
-  console.log("[sendTokenResponse] Cookie options:", cookieOptions);
-  console.log("[sendTokenResponse] Setting cookie with token");
   res
     .status(statusCode)
     .cookie("jwt", token, cookieOptions)
@@ -207,32 +205,18 @@ r.post("/logout", (req, res) => {
  */
 r.get("/me", async (req, res) => {
   try {
-    console.log("[Auth /me] Request received");
-    console.log("[Auth /me] Headers Authorization:", req.headers.authorization);
-    console.log("[Auth /me] Cookies:", req.cookies);
-
     // Get token from header or cookie
     let token;
-    let tokenSource;
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
     ) {
       token = req.headers.authorization.split(" ")[1];
-      tokenSource = "Authorization header";
     } else if (req.cookies.jwt) {
       token = req.cookies.jwt;
-      tokenSource = "Cookie";
     }
 
-    console.log("[Auth /me] Token source:", tokenSource);
-    console.log(
-      "[Auth /me] Token found:",
-      token ? "Yes (length: " + token.length + ")" : "No"
-    );
-
     if (!token) {
-      console.log("[Auth /me] No token found, returning 401");
       return res.status(401).json({
         error: "Not authenticated. Please log in.",
       });
