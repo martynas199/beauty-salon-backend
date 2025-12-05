@@ -11,16 +11,20 @@ async function deleteAppointment() {
     console.log("Connected to MongoDB");
 
     const appointment = await Appointment.findById(appointmentId);
-    
+
     if (!appointment) {
       console.log("❌ Appointment not found");
     } else {
       console.log("\n📋 Appointment to delete:");
       console.log(`ID: ${appointment._id}`);
-      console.log(`Client: ${appointment.client?.name} (${appointment.client?.email})`);
+      console.log(
+        `Client: ${appointment.client?.name} (${appointment.client?.email})`
+      );
       console.log(`Status: ${appointment.status}`);
-      console.log(`Payment: ${appointment.payment?.mode} - ${appointment.payment?.status}`);
-      
+      console.log(
+        `Payment: ${appointment.payment?.mode} - ${appointment.payment?.status}`
+      );
+
       await Appointment.findByIdAndDelete(appointmentId);
       console.log("\n✅ Appointment deleted successfully");
     }

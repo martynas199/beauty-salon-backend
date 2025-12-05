@@ -207,18 +207,32 @@ r.post("/logout", (req, res) => {
  */
 r.get("/me", async (req, res) => {
   try {
+    console.log("[Auth /me] Request received");
+    console.log("[Auth /me] Headers Authorization:", req.headers.authorization);
+    console.log("[Auth /me] Cookies:", req.cookies);
+
     // Get token from header or cookie
     let token;
+    let tokenSource;
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
     ) {
       token = req.headers.authorization.split(" ")[1];
+      tokenSource = "Authorization header";
     } else if (req.cookies.jwt) {
       token = req.cookies.jwt;
+      tokenSource = "Cookie";
     }
 
+    console.log("[Auth /me] Token source:", tokenSource);
+    console.log(
+      "[Auth /me] Token found:",
+      token ? "Yes (length: " + token.length + ")" : "No"
+    );
+
     if (!token) {
+      console.log("[Auth /me] No token found, returning 401");
       return res.status(401).json({
         error: "Not authenticated. Please log in.",
       });
