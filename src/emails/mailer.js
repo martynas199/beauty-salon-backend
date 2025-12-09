@@ -1526,6 +1526,10 @@ export async function sendDepositPaymentEmail({
   appointment,
   service,
   beautician,
+  depositAmount: depositAmountParam,
+  platformFee: platformFeeParam,
+  totalAmount: totalAmountParam,
+  remainingBalance: remainingBalanceParam,
 }) {
   console.log(
     "[MAILER] sendDepositPaymentEmail called for appointment:",
@@ -1563,18 +1567,32 @@ export async function sendDepositPaymentEmail({
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
-  const depositAmount = appointment.payment.amountDeposit
-    ? (appointment.payment.amountDeposit / 100).toFixed(2)
-    : "0.00";
-  const platformFee = appointment.payment.stripe?.platformFee
-    ? (appointment.payment.stripe.platformFee / 100).toFixed(2)
-    : "0.50";
-  const totalAmount = appointment.payment.amountTotal
-    ? (appointment.payment.amountTotal / 100).toFixed(2)
-    : "0.00";
-  const remainingBalance = appointment.payment.amountBalance
-    ? (appointment.payment.amountBalance / 100).toFixed(2)
-    : "0.00";
+
+  // Use passed parameters if available, otherwise fall back to appointment data
+  const depositAmount =
+    depositAmountParam !== undefined
+      ? depositAmountParam.toFixed(2)
+      : appointment.payment.amountDeposit
+      ? (appointment.payment.amountDeposit / 100).toFixed(2)
+      : "0.00";
+  const platformFee =
+    platformFeeParam !== undefined
+      ? platformFeeParam.toFixed(2)
+      : appointment.payment.stripe?.platformFee
+      ? (appointment.payment.stripe.platformFee / 100).toFixed(2)
+      : "0.50";
+  const totalAmount =
+    totalAmountParam !== undefined
+      ? totalAmountParam.toFixed(2)
+      : appointment.payment.amountTotal
+      ? (appointment.payment.amountTotal / 100).toFixed(2)
+      : "0.00";
+  const remainingBalance =
+    remainingBalanceParam !== undefined
+      ? remainingBalanceParam.toFixed(2)
+      : appointment.payment.amountBalance
+      ? (appointment.payment.amountBalance / 100).toFixed(2)
+      : "0.00";
 
   const textContent = `
 Hi ${appointment.client?.name || "there"},
@@ -1629,6 +1647,12 @@ Noble Elegance Team
                 <strong>Service:</strong> ${serviceName}
               </p>
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Service Price:</strong> £${(
+                  Number(depositAmountParam || 0) +
+                  Number(remainingBalanceParam || 0)
+                ).toFixed(2)}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
                 <strong>Beautician:</strong> ${beauticianName}
               </p>
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
@@ -1644,8 +1668,8 @@ Noble Elegance Team
             <div style="text-align: center; margin: 30px 0;">
               <a href="${
                 appointment.payment.checkoutUrl
-              }" style="display: inline-block; background: linear-gradient(135deg, #76540E 0%, #d4a710 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                Pay Deposit Now
+              }" style="display: inline-block; background: #ffffff; color: #059669 !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border: 2px solid #10b981;">
+                <span style="color: #059669 !important;">Pay Deposit Now</span>
               </a>
             </div>
 
@@ -1717,10 +1741,196 @@ Noble Elegance Team
   }
 }
 
+export async function sendBookingFeeEmail({
+  appointment,
+  service,
+  beautician,
+  bookingFeeAmount,
+  checkoutUrl,
+}) {
+  console.log(
+    "[MAILER] sendBookingFeeEmail called for appointment:",
+    appointment?._id
+  );
+  const tx = getTransport();
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping booking fee email");
+    return;
+  }
+
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const customerEmail = appointment.client?.email;
+
+  if (!customerEmail) {
+    console.warn("[MAILER] No customer email - skipping booking fee email");
+    return;
+  }
+
+  if (!checkoutUrl) {
+    console.warn("[MAILER] No checkout URL - skipping booking fee email");
+    return;
+  }
+
+  const salonTz = process.env.SALON_TZ || "Europe/London";
+  const startTime = new Date(appointment.start).toLocaleString("en-GB", {
+    timeZone: salonTz,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const serviceName = service?.name || appointment.variantName || "Service";
+  const beauticianName = beautician?.name || "Our team";
+  const servicePrice = appointment.price
+    ? appointment.price.toFixed(2)
+    : "0.00";
+
+  const textContent = `
+Hi ${appointment.client?.name || "there"},
+
+Your appointment has been created for ${serviceName} on ${startTime} with ${beauticianName}.
+
+A £${bookingFeeAmount.toFixed(
+    2
+  )} booking fee is required to confirm your appointment slot.
+
+Please click the link below to pay the booking fee:
+${checkoutUrl}
+
+Payment details:
+- Service price: £${servicePrice} (to be paid at the salon)
+- Booking fee: £${bookingFeeAmount.toFixed(2)}
+
+Once the booking fee is paid, your appointment will be confirmed.
+
+Thank you for choosing Noble Elegance Beauty Salon!
+
+Best regards,
+Noble Elegance Team
+  `;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #76540E 0%, #d4a710 100%); padding: 40px 30px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">Booking Fee Required</h1>
+            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">Confirm Your Appointment</p>
+          </div>
+
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hi <strong>${appointment.client?.name || "there"}</strong>,
+            </p>
+
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Your appointment for <strong>${serviceName}</strong> has been created and is pending confirmation.
+            </p>
+
+            <!-- Appointment Details Box -->
+            <div style="background-color: #f9fafb; border-left: 4px solid #d4a710; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0; color: #111827; font-weight: 600;">📅 Appointment Details</p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Service:</strong> ${serviceName}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Beautician:</strong> ${beauticianName}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Date & Time:</strong> ${startTime}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Service Price:</strong> £${servicePrice} <span style="color: #6b7280; font-size: 12px;">(payable at salon)</span>
+              </p>
+            </div>
+
+            <!-- Notice Box -->
+            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                <strong>⚠️ Action Required:</strong> A £${bookingFeeAmount.toFixed(
+                  2
+                )} booking fee is required to secure your appointment slot. Your appointment will be confirmed once payment is completed.
+              </p>
+            </div>
+
+            <!-- Payment Button -->
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${checkoutUrl}" style="display: inline-block; background: #ffffff; color: #059669 !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border: 2px solid #10b981;">
+                <span style="color: #059669 !important;">Pay Booking Fee (£${bookingFeeAmount.toFixed(
+                  2
+                )})</span>
+              </a>
+            </div>
+
+            <!-- What Happens Next -->
+            <div style="background-color: #f0fdf4; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0; color: #065f46; font-weight: 600;">✓ What happens next?</p>
+              <ul style="margin: 0; padding-left: 20px; color: #047857; font-size: 14px; line-height: 1.8;">
+                <li>Pay the £${bookingFeeAmount.toFixed(
+                  2
+                )} booking fee using the button above</li>
+                <li>Your appointment will be automatically confirmed</li>
+                <li>You'll receive a confirmation email</li>
+                <li>Pay the remaining £${servicePrice} at the salon</li>
+              </ul>
+            </div>
+
+            <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 20px 0 0 0;">
+              If you can't click the button, copy and paste this link into your browser:<br>
+              <a href="${checkoutUrl}" style="color: #d4a710; word-break: break-all;">${checkoutUrl}</a>
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 13px; margin: 0 0 10px 0;">
+              Noble Elegance Beauty Salon<br>
+              12 Blackfriars Rd, Wisbech PE13 1AT<br>
+              Phone: +44 7928 775746
+            </p>
+            <p style="color: #9ca3af; font-size: 11px; margin: 15px 0 0 0;">
+              Appointment ID: ${String(appointment._id)}
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  try {
+    console.log("[MAILER] Sending booking fee email to:", customerEmail);
+    const info = await tx.sendMail({
+      from,
+      to: customerEmail,
+      subject: `💳 Booking Fee Required - Confirm Your ${serviceName} Appointment`,
+      text: textContent,
+      html: htmlContent,
+    });
+    console.log(
+      "[MAILER] ✓ Booking fee email sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error("[MAILER] ✗ Failed to send booking fee email:", error);
+    throw error;
+  }
+}
+
 export default {
   sendCancellationEmails,
   sendConfirmationEmail,
   sendDepositPaymentEmail,
+  sendBookingFeeEmail,
   sendOrderConfirmationEmail,
   sendAdminOrderNotification,
   sendBeauticianProductOrderNotification,

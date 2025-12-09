@@ -62,19 +62,22 @@ r.post("/stripe", async (req, res) => {
           "orderId:",
           orderId,
           "session:",
-          session.id
+          session.id,
+          "metadata:",
+          JSON.stringify(session.metadata)
         );
 
         // Handle appointment confirmation
         if (apptId) {
           try {
-            // Check if this is a manual appointment deposit payment
+            // Check if this is a manual appointment deposit payment or booking fee
             const isManualDeposit =
               session.metadata?.type === "manual_appointment_deposit";
+            const isBookingFee = session.metadata?.type === "booking_fee";
 
-            // Retrieve payment intent to get transfer info
+            // Retrieve payment intent to get transfer info (not needed for booking fee)
             let transferId = null;
-            if (session.payment_intent) {
+            if (session.payment_intent && !isBookingFee) {
               try {
                 const stripe = getStripe();
                 const paymentIntent = await stripe.paymentIntents.retrieve(
@@ -99,9 +102,13 @@ r.post("/stripe", async (req, res) => {
                 status: "confirmed",
                 "payment.status": "succeeded",
                 "payment.provider": "stripe",
-                "payment.mode": isManualDeposit ? "deposit" : "pay_now",
+                "payment.mode": isManualDeposit
+                  ? "deposit"
+                  : isBookingFee
+                  ? "booking_fee"
+                  : "pay_now",
                 "payment.sessionId": session.id,
-                ...(isManualDeposit
+                ...(isManualDeposit || isBookingFee
                   ? { "payment.checkoutSessionId": session.id }
                   : {}),
                 ...(session.amount_total != null
@@ -119,6 +126,8 @@ r.post("/stripe", async (req, res) => {
                   at: new Date(),
                   action: isManualDeposit
                     ? "webhook_deposit_paid"
+                    : isBookingFee
+                    ? "webhook_booking_fee_paid"
                     : "webhook_checkout_completed",
                   meta: { eventId: event.id, sessionId: session.id },
                 },
@@ -129,6 +138,7 @@ r.post("/stripe", async (req, res) => {
               "[WEBHOOK] Updating appointment with:",
               JSON.stringify(updateData, null, 2)
             );
+            console.log("[WEBHOOK] Looking for appointment ID:", apptId);
 
             const appointment = await Appointment.findByIdAndUpdate(
               apptId,
@@ -137,6 +147,14 @@ r.post("/stripe", async (req, res) => {
             )
               .populate("serviceId")
               .populate("beauticianId");
+
+            console.log(
+              "[WEBHOOK] Found appointment:",
+              appointment ? "YES" : "NO"
+            );
+            if (!appointment) {
+              console.error("[WEBHOOK] Appointment not found with ID:", apptId);
+            }
 
             console.log(
               "[WEBHOOK] Appointment",

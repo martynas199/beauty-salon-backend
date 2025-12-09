@@ -8,6 +8,7 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
 import passport from "./config/passport.js";
+import { startCleanupJob } from "./jobs/cleanupUnpaidAppointments.js";
 import servicesRouter from "./routes/services.js";
 import beauticiansRouter from "./routes/beauticians.js";
 import slotsRouter from "./routes/slots.js";
@@ -176,4 +177,7 @@ app.listen(PORT, () => {
   console.log(`   - CORS restricted to: ${allowedOrigins.join(", ")}`);
   console.log(`   - Rate limiting active`);
   console.log(`   - JWT authentication required for admin routes`);
+
+  // Start cleanup job for unpaid appointments
+  startCleanupJob();
 });

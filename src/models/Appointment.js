@@ -24,7 +24,7 @@ const PaymentSchema = new mongoose.Schema(
   {
     mode: {
       type: String,
-      enum: ["pay_now", "deposit", "pay_in_salon"],
+      enum: ["pay_now", "deposit", "pay_in_salon", "booking_fee"],
       index: true,
     },
     provider: {

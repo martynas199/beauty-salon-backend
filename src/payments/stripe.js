@@ -51,4 +51,7 @@ export async function refundPayment({
   return refund;
 }
 
-export default { refundPayment };
+// Export getStripe function for direct access to Stripe client
+export { getStripe };
+
+export default { refundPayment, getStripe };

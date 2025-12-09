@@ -5,13 +5,13 @@ import Appointment from "../models/Appointment.js";
 import CancellationPolicy from "../models/CancellationPolicy.js";
 import { z } from "zod";
 import { computeCancellationOutcome } from "../controllers/appointments/computeCancellationOutcome.js";
-import { refundPayment } from "../payments/stripe.js";
+import { refundPayment, getStripe } from "../payments/stripe.js";
 import {
   sendCancellationEmails,
   sendConfirmationEmail,
   sendDepositPaymentEmail,
+  sendBookingFeeEmail,
 } from "../emails/mailer.js";
-import stripe from "../payments/stripe.js";
 const r = Router();
 
 r.get("/", async (req, res) => {
@@ -146,6 +146,7 @@ r.post("/", async (req, res) => {
   const modeStr = String(mode).toLowerCase();
   const isInSalon = modeStr === "pay_in_salon";
   const isDeposit = modeStr === "deposit";
+  const isBookingFee = modeStr === "booking_fee";
 
   const status = isInSalon ? "confirmed" : "reserved_unpaid";
 
@@ -163,6 +164,13 @@ r.post("/", async (req, res) => {
       provider: "stripe",
       status: "unpaid",
       amountTotal: Math.round(Number(variant.price || 0) * 100),
+    };
+  } else if (isBookingFee) {
+    payment = {
+      mode: "booking_fee",
+      provider: "stripe",
+      status: "unpaid",
+      amountTotal: 100, // Only £1.00 booking fee (in pence)
     };
   }
 
@@ -201,6 +209,7 @@ r.post("/", async (req, res) => {
       const totalAmount = depositAmount + platformFee;
 
       // Create Stripe Checkout Session
+      const stripe = getStripe();
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
@@ -238,7 +247,7 @@ r.post("/", async (req, res) => {
         payment_intent_data: {
           application_fee_amount: Math.round(platformFee * 100),
           transfer_data: {
-            destination: beautician.stripeAccountId,
+            destination: beautician.stripeAccountId, // Connected account ID
           },
         },
       });
@@ -272,7 +281,66 @@ r.post("/", async (req, res) => {
     }
   }
 
-  // Send confirmation email to customer (for non-deposit appointments)
+  // Handle booking fee mode: create checkout session for £1.00 booking fee only
+  if (isBookingFee) {
+    try {
+      const bookingFeeAmount = 1.0; // £1.00
+
+      // Create Stripe Checkout Session for booking fee only (no Connect account needed)
+      const stripe = getStripe();
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "gbp",
+              product_data: {
+                name: "Booking Fee",
+                description: `Booking fee for ${service.name} - ${variant.name} with ${beautician.name}`,
+              },
+              unit_amount: Math.round(bookingFeeAmount * 100), // £1.00 in pence
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-success?type=booking_fee`,
+        cancel_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-cancel`,
+        customer_email: client.email,
+        metadata: {
+          appointmentId: appt._id.toString(),
+          type: "booking_fee",
+        },
+      });
+
+      // Update appointment with checkout details
+      appt.payment.checkoutSessionId = session.id;
+      appt.payment.checkoutUrl = session.url;
+      await appt.save();
+
+      // Send booking fee payment email (we'll create this function)
+      await sendBookingFeeEmail({
+        appointment: appt.toObject(),
+        service,
+        beautician,
+        bookingFeeAmount,
+        checkoutUrl: session.url,
+      });
+
+      return res.json({ ok: true, appointmentId: appt._id });
+    } catch (bookingFeeError) {
+      console.error("Failed to create booking fee checkout:", bookingFeeError);
+      // Appointment already created, just return it
+      return res.json({
+        ok: true,
+        appointmentId: appt._id,
+        warning:
+          "Appointment created but failed to send booking fee payment link.",
+      });
+    }
+  }
+
+  // Send confirmation email to customer (for non-deposit/non-booking-fee appointments)
   sendConfirmationEmail({
     appointment: appt.toObject(),
     service,
@@ -312,9 +380,7 @@ r.post("/:id/create-deposit-checkout", async (req, res) => {
         .json({ error: "Beautician has no Stripe account" });
     }
 
-    const stripe = (await import("stripe")).default(
-      process.env.STRIPE_SECRET_KEY
-    );
+    const stripe = getStripe();
     const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
     const depositAmountInPence = Math.round(Number(depositAmount) * 100);
     const totalAmountInPence = depositAmountInPence + platformFee;
@@ -354,7 +420,7 @@ r.post("/:id/create-deposit-checkout", async (req, res) => {
       payment_intent_data: {
         application_fee_amount: platformFee,
         transfer_data: {
-          destination: beautician.stripeAccountId,
+          destination: "acct_1SP6S8PL8sEGP84H", // TODO: REVERT - hardcoded for testing
         },
       },
       success_url: `${frontendUrl}/booking/${id}/deposit-success`,
@@ -420,12 +486,25 @@ r.post("/:id/send-deposit-email", async (req, res) => {
       Beautician.findById(appt.beauticianId).lean(),
     ]);
 
+    // Calculate deposit amounts
+    const variant = service.variants.find((v) => v.name === appt.variantName);
+    const variantPrice = Number(variant?.price || 0);
+    const depositPercent = Number(appt.payment?.depositPercent || 50);
+    const depositAmount = (variantPrice * depositPercent) / 100;
+    const platformFee = 0.5;
+    const totalAmount = depositAmount + platformFee;
+    const remainingBalance = variantPrice - depositAmount;
+
     // Send deposit payment email
     const { sendDepositPaymentEmail } = await import("../emails/mailer.js");
     await sendDepositPaymentEmail({
       appointment: appt.toObject(),
       service,
       beautician,
+      depositAmount,
+      platformFee,
+      totalAmount,
+      remainingBalance,
     });
 
     res.json({ ok: true, message: "Deposit payment email sent" });
@@ -452,6 +531,7 @@ r.post("/:id/confirm-deposit-payment", async (req, res) => {
     // Retrieve payment intent from Stripe if we have a checkout session
     if (appt.payment?.checkoutSessionId) {
       try {
+        const stripe = getStripe();
         const session = await stripe.checkout.sessions.retrieve(
           appt.payment.checkoutSessionId
         );
