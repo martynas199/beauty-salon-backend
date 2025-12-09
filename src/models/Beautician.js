@@ -79,6 +79,7 @@ const BeauticianSchema = new mongoose.Schema(
 
     // Stripe Connect fields
     stripeAccountId: { type: String, index: true },
+    stripeCustomerId: { type: String, index: true },
     stripeStatus: {
       type: String,
       enum: ["not_connected", "pending", "connected", "rejected"],
@@ -91,6 +92,22 @@ const BeauticianSchema = new mongoose.Schema(
 
     // Payment preferences
     inSalonPayment: { type: Boolean, default: false }, // If true, accept payment in salon (no Stripe deposit, only booking fee)
+
+    // Premium features subscription
+    subscription: {
+      noFeeBookings: {
+        enabled: { type: Boolean, default: false },
+        stripeSubscriptionId: String,
+        stripePriceId: String,
+        status: {
+          type: String,
+          enum: ["inactive", "active", "past_due", "canceled"],
+          default: "inactive",
+        },
+        currentPeriodStart: Date,
+        currentPeriodEnd: Date,
+      },
+    },
   },
   { timestamps: true }
 );

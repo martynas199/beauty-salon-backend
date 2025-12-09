@@ -529,6 +529,84 @@ r.post("/stripe", async (req, res) => {
         break;
       }
 
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const subscription = event.data.object;
+        const beauticianId = subscription.metadata?.beauticianId;
+        const feature = subscription.metadata?.feature;
+
+        console.log(
+          "[WEBHOOK] subscription event - beauticianId:",
+          beauticianId,
+          "feature:",
+          feature,
+          "status:",
+          subscription.status
+        );
+
+        if (beauticianId && feature === "no_fee_bookings") {
+          try {
+            const beautician = await Beautician.findById(beauticianId);
+            if (beautician) {
+              beautician.subscription = beautician.subscription || {};
+              beautician.subscription.noFeeBookings = {
+                enabled: subscription.status === "active",
+                stripeSubscriptionId: subscription.id,
+                stripePriceId: subscription.items.data[0]?.price.id,
+                status: subscription.status,
+                currentPeriodStart: new Date(
+                  subscription.current_period_start * 1000
+                ),
+                currentPeriodEnd: new Date(
+                  subscription.current_period_end * 1000
+                ),
+              };
+              await beautician.save();
+              console.log(
+                "[WEBHOOK] Beautician",
+                beauticianId,
+                "subscription updated"
+              );
+            }
+          } catch (e) {
+            console.error("[WEBHOOK] subscription update err", e);
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        const beauticianId = subscription.metadata?.beauticianId;
+        const feature = subscription.metadata?.feature;
+
+        console.log(
+          "[WEBHOOK] subscription deleted - beauticianId:",
+          beauticianId,
+          "feature:",
+          feature
+        );
+
+        if (beauticianId && feature === "no_fee_bookings") {
+          try {
+            const beautician = await Beautician.findById(beauticianId);
+            if (beautician && beautician.subscription?.noFeeBookings) {
+              beautician.subscription.noFeeBookings.enabled = false;
+              beautician.subscription.noFeeBookings.status = "canceled";
+              await beautician.save();
+              console.log(
+                "[WEBHOOK] Beautician",
+                beauticianId,
+                "subscription canceled"
+              );
+            }
+          } catch (e) {
+            console.error("[WEBHOOK] subscription delete err", e);
+          }
+        }
+        break;
+      }
+
       default:
         console.log("[WEBHOOK] Unhandled event type:", event.type);
         break;

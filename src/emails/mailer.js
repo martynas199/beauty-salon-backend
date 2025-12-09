@@ -296,6 +296,11 @@ export async function sendConfirmationEmail({
   let bookingFee = 0;
   let remainingBalance = 0;
 
+  // Check if beautician has no-fee subscription active
+  const hasNoFeeSubscription =
+    beautician?.subscription?.noFeeBookings?.enabled === true &&
+    beautician?.subscription?.noFeeBookings?.status === "active";
+
   // Check if beautician has in-salon payment enabled
   if (beautician?.inSalonPayment) {
     paymentStatus = `Pay in salon (${price} due at appointment)`;
@@ -309,8 +314,10 @@ export async function sendConfirmationEmail({
   } else if (appointment.payment?.mode === "deposit") {
     isDepositPayment = true;
     // Calculate deposit amount from payment.amountTotal (in pence/cents)
-    // Note: amountTotal includes the £0.50 booking fee
-    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // in pence/cents
+    // Note: amountTotal includes the £0.50 booking fee (unless subscription is active)
+    const platformFee = hasNoFeeSubscription
+      ? 0
+      : Number(process.env.STRIPE_PLATFORM_FEE || 50); // in pence/cents
     bookingFee = platformFee / 100; // Convert to main currency unit for display
     const totalPaid = appointment.payment?.amountTotal
       ? appointment.payment.amountTotal / 100
@@ -360,13 +367,11 @@ Date & Time: ${startTime}
 Price: ${price}
 ${
   isDepositPayment
-    ? `Deposit: ${formatCurrency(
-        depositAmount,
-        currency
-      )}\nBooking Fee: ${formatCurrency(
-        bookingFee,
-        currency
-      )}\nTotal Paid: ${formatCurrency(depositAmount + bookingFee, currency)}`
+    ? `Deposit: ${formatCurrency(depositAmount, currency)}${
+        bookingFee > 0
+          ? `\nBooking Fee: ${formatCurrency(bookingFee, currency)}`
+          : ""
+      }\nTotal Paid: ${formatCurrency(depositAmount + bookingFee, currency)}`
     : `Payment: ${paymentStatus}`
 }${
         isDepositPayment && remainingBalance > 0
@@ -406,10 +411,14 @@ Thank you for choosing us!`,
               depositAmount,
               currency
             )}</strong></p>
-            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
-              bookingFee,
-              currency
-            )}</strong></p>
+            ${
+              bookingFee > 0
+                ? `<p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
+                    bookingFee,
+                    currency
+                  )}</strong></p>`
+                : ""
+            }
             <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: ${formatCurrency(
               depositAmount + bookingFee,
               currency
@@ -473,13 +482,11 @@ Date & Time: ${startTime}
 Price: ${price}
 ${
   isDepositPayment
-    ? `Deposit: ${formatCurrency(
-        depositAmount,
-        currency
-      )}\nBooking Fee: ${formatCurrency(
-        bookingFee,
-        currency
-      )}\nTotal Paid: ${formatCurrency(
+    ? `Deposit: ${formatCurrency(depositAmount, currency)}${
+        bookingFee > 0
+          ? `\nBooking Fee: ${formatCurrency(bookingFee, currency)}`
+          : ""
+      }\nTotal Paid: ${formatCurrency(
         depositAmount + bookingFee,
         currency
       )}\nRemaining Balance: ${formatCurrency(
@@ -524,10 +531,14 @@ Please ensure you're prepared for this appointment.`;
               depositAmount,
               currency
             )}</strong></p>
-            <p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
-              bookingFee,
-              currency
-            )}</strong></p>
+            ${
+              bookingFee > 0
+                ? `<p style="margin: 4px 0; color: #047857; font-size: 14px;">Booking Fee: <strong>${formatCurrency(
+                    bookingFee,
+                    currency
+                  )}</strong></p>`
+                : ""
+            }
             <p style="margin: 8px 0 0 0; padding-top: 8px; border-top: 1px solid #d1fae5; color: #065f46; font-size: 15px; font-weight: 700;">Total Paid: ${formatCurrency(
               depositAmount + bookingFee,
               currency
@@ -1530,6 +1541,7 @@ export async function sendDepositPaymentEmail({
   platformFee: platformFeeParam,
   totalAmount: totalAmountParam,
   remainingBalance: remainingBalanceParam,
+  hasNoFeeSubscription = false,
 }) {
   console.log(
     "[MAILER] sendDepositPaymentEmail called for appointment:",
@@ -1605,8 +1617,12 @@ Please click the link below to pay your deposit:
 ${appointment.payment.checkoutUrl}
 
 Payment breakdown:
-- Deposit: £${depositAmount}
-- Booking fee: £${platformFee}
+- Deposit: £${depositAmount}${
+    hasNoFeeSubscription
+      ? ""
+      : `
+- Booking fee: £${platformFee}`
+  }
 - Total to pay now: £${totalAmount}
 - Remaining balance (pay at salon): £${remainingBalance}
 
@@ -1681,10 +1697,14 @@ Noble Elegance Team
                   <td style="padding: 8px 0; color: #4b5563; font-size: 14px;">Deposit amount:</td>
                   <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">£${depositAmount}</td>
                 </tr>
-                <tr>
+                ${
+                  !hasNoFeeSubscription
+                    ? `<tr>
                   <td style="padding: 8px 0; color: #4b5563; font-size: 14px;">Booking fee:</td>
                   <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">£${platformFee}</td>
-                </tr>
+                </tr>`
+                    : ""
+                }
                 <tr style="border-top: 2px solid #e5e7eb;">
                   <td style="padding: 12px 0 8px 0; color: #111827; font-size: 16px; font-weight: 600;">Total to pay now:</td>
                   <td style="padding: 12px 0 8px 0; color: #d4a710; font-size: 18px; text-align: right; font-weight: 700;">£${totalAmount}</td>

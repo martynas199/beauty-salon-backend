@@ -323,8 +323,15 @@ r.post("/create-session", async (req, res, next) => {
     // Get beautician to check payment settings and Stripe Connect status
     const beautician = await Beautician.findById(appt.beauticianId).lean();
 
+    // Check if beautician has active no-fee subscription
+    const hasNoFeeSubscription =
+      beautician?.subscription?.noFeeBookings?.enabled === true &&
+      beautician?.subscription?.noFeeBookings?.status === "active";
+
     const baseAmount = Number(appt.price || 0);
-    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
+    const platformFee = hasNoFeeSubscription
+      ? 0
+      : Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence or £0 if subscription
 
     // If beautician accepts in-salon payment, charge only the booking fee
     let amountBeforeFee;

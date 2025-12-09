@@ -35,6 +35,7 @@ import shippingRouter from "./routes/shipping.js";
 import subscriptionsRouter from "./routes/subscriptions.js";
 import wishlistRouter from "./routes/wishlist.js";
 import blogPostsRouter from "./routes/blogPosts.js";
+import featuresRouter from "./routes/features.js";
 import {
   apiLimiter,
   authLimiter,
@@ -162,6 +163,7 @@ app.use("/api/connect", connectRouter); // Stripe Connect routes
 app.use("/api/reports", reportsRouter); // Revenue and earnings reports
 app.use("/api/admin/admins", adminsRouter); // Admin management routes
 app.use("/api/analytics", analyticsRouter); // Profit analytics routes
+app.use("/api/features", featuresRouter); // Premium features subscription routes
 app.use("/api/subscriptions", subscriptionsRouter); // E-commerce subscription routes
 
 // Error handling

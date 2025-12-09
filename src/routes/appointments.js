@@ -146,9 +146,22 @@ r.post("/", async (req, res) => {
   const modeStr = String(mode).toLowerCase();
   const isInSalon = modeStr === "pay_in_salon";
   const isDeposit = modeStr === "deposit";
-  const isBookingFee = modeStr === "booking_fee";
+  let isBookingFee = modeStr === "booking_fee";
 
-  const status = isInSalon ? "confirmed" : "reserved_unpaid";
+  // Check if beautician has no-fee bookings subscription active
+  const hasNoFeeSubscription =
+    beautician.subscription?.noFeeBookings?.enabled === true &&
+    beautician.subscription?.noFeeBookings?.status === "active";
+
+  // If beautician has subscription, skip booking fee and treat as confirmed
+  const skipBookingFee = isBookingFee && hasNoFeeSubscription;
+  if (skipBookingFee) {
+    console.log(
+      "[APPOINTMENT] Beautician has no-fee subscription, skipping booking fee"
+    );
+  }
+
+  const status = isInSalon || skipBookingFee ? "confirmed" : "reserved_unpaid";
 
   let payment = undefined;
   if (isInSalon) {
@@ -165,7 +178,8 @@ r.post("/", async (req, res) => {
       status: "unpaid",
       amountTotal: Math.round(Number(variant.price || 0) * 100),
     };
-  } else if (isBookingFee) {
+  } else if (isBookingFee && !skipBookingFee) {
+    // Only charge booking fee if subscription is not active
     payment = {
       mode: "booking_fee",
       provider: "stripe",
@@ -210,32 +224,40 @@ r.post("/", async (req, res) => {
 
       // Create Stripe Checkout Session
       const stripe = getStripe();
+
+      // Build line items - include booking fee only if no subscription
+      const lineItems = [
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: `Deposit for ${service.name} - ${variant.name}`,
+              description: `With ${beautician.name}`,
+            },
+            unit_amount: Math.round(depositAmount * 100),
+          },
+          quantity: 1,
+        },
+      ];
+
+      // Add booking fee only if beautician doesn't have no-fee subscription
+      if (!hasNoFeeSubscription) {
+        lineItems.push({
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: "Booking Fee",
+              description: "Platform booking fee",
+            },
+            unit_amount: Math.round(platformFee * 100),
+          },
+          quantity: 1,
+        });
+      }
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: "gbp",
-              product_data: {
-                name: `Deposit for ${service.name} - ${variant.name}`,
-                description: `With ${beautician.name}`,
-              },
-              unit_amount: Math.round(depositAmount * 100),
-            },
-            quantity: 1,
-          },
-          {
-            price_data: {
-              currency: "gbp",
-              product_data: {
-                name: "Booking Fee",
-                description: "Platform booking fee",
-              },
-              unit_amount: Math.round(platformFee * 100),
-            },
-            quantity: 1,
-          },
-        ],
+        line_items: lineItems,
         mode: "payment",
         success_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-success`,
         cancel_url: `${process.env.FRONTEND_URL}/booking/${appt._id}/deposit-cancel`,
@@ -243,11 +265,14 @@ r.post("/", async (req, res) => {
         metadata: {
           appointmentId: appt._id.toString(),
           type: "manual_appointment_deposit",
+          hasNoFeeSubscription: hasNoFeeSubscription.toString(),
         },
         payment_intent_data: {
-          application_fee_amount: Math.round(platformFee * 100),
+          application_fee_amount: hasNoFeeSubscription
+            ? 0
+            : Math.round(platformFee * 100),
           transfer_data: {
-            destination: beautician.stripeAccountId, // Connected account ID
+            destination: beautician.stripeAccountId,
           },
         },
       });
@@ -258,16 +283,24 @@ r.post("/", async (req, res) => {
       await appt.save();
 
       // Send deposit payment email
-      await sendDepositPaymentEmail({
-        appointment: appt.toObject(),
-        service,
-        beautician,
-        depositAmount,
-        platformFee,
-        totalAmount,
-        remainingBalance: Number(variant.price || 0) - depositAmount,
-        checkoutUrl: session.url,
-      });
+      console.log("[DEPOSIT] Sending deposit payment email to:", client.email);
+      try {
+        await sendDepositPaymentEmail({
+          appointment: appt.toObject(),
+          service,
+          beautician,
+          depositAmount,
+          platformFee: hasNoFeeSubscription ? 0 : platformFee,
+          totalAmount: hasNoFeeSubscription ? depositAmount : totalAmount,
+          remainingBalance: Number(variant.price || 0) - depositAmount,
+          checkoutUrl: session.url,
+          hasNoFeeSubscription,
+        });
+        console.log("[DEPOSIT] Email sent successfully");
+      } catch (emailError) {
+        console.error("[DEPOSIT] Failed to send email:", emailError);
+        // Don't fail the request if email fails
+      }
 
       return res.json({ ok: true, appointmentId: appt._id });
     } catch (depositError) {
@@ -282,7 +315,7 @@ r.post("/", async (req, res) => {
   }
 
   // Handle booking fee mode: create checkout session for £1.00 booking fee only
-  if (isBookingFee) {
+  if (isBookingFee && !skipBookingFee) {
     try {
       const bookingFeeAmount = 1.0; // £1.00
 
@@ -383,44 +416,59 @@ r.post("/:id/create-deposit-checkout", async (req, res) => {
     const stripe = getStripe();
     const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // £0.50 in pence
     const depositAmountInPence = Math.round(Number(depositAmount) * 100);
-    const totalAmountInPence = depositAmountInPence + platformFee;
+
+    // Check if beautician has no-fee subscription
+    const hasNoFeeSubscription =
+      beautician.subscription?.noFeeBookings?.enabled === true &&
+      beautician.subscription?.noFeeBookings?.status === "active";
+
+    const totalAmountInPence = hasNoFeeSubscription
+      ? depositAmountInPence
+      : depositAmountInPence + platformFee;
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    // Build line items - include booking fee only if no subscription
+    const lineItems = [
+      {
+        price_data: {
+          currency: "gbp",
+          product_data: {
+            name: `${service.name}${
+              appt.variantName ? ` - ${appt.variantName}` : ""
+            }`,
+            description: `Deposit for ${service.name} with ${beautician.name}`,
+          },
+          unit_amount: depositAmountInPence,
+        },
+        quantity: 1,
+      },
+    ];
+
+    // Add booking fee only if beautician doesn't have no-fee subscription
+    if (!hasNoFeeSubscription) {
+      lineItems.push({
+        price_data: {
+          currency: "gbp",
+          product_data: {
+            name: "Booking Fee",
+            description: "Platform booking fee",
+          },
+          unit_amount: platformFee,
+        },
+        quantity: 1,
+      });
+    }
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "gbp",
-            product_data: {
-              name: `${service.name}${
-                appt.variantName ? ` - ${appt.variantName}` : ""
-              }`,
-              description: `Deposit for ${service.name} with ${beautician.name}`,
-            },
-            unit_amount: depositAmountInPence,
-          },
-          quantity: 1,
-        },
-        {
-          price_data: {
-            currency: "gbp",
-            product_data: {
-              name: "Booking Fee",
-              description: "Platform booking fee",
-            },
-            unit_amount: platformFee,
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       payment_intent_data: {
-        application_fee_amount: platformFee,
+        application_fee_amount: hasNoFeeSubscription ? 0 : platformFee,
         transfer_data: {
-          destination: "acct_1SP6S8PL8sEGP84H", // TODO: REVERT - hardcoded for testing
+          destination: beautician.stripeAccountId,
         },
       },
       success_url: `${frontendUrl}/booking/${id}/deposit-success`,
