@@ -112,6 +112,17 @@ r.post("/", async (req, res) => {
     mode,
     userId,
   } = req.body;
+
+  console.log("[APPOINTMENT] Creating new appointment with:", {
+    beauticianId,
+    any,
+    serviceId,
+    variantName,
+    startISO,
+    client,
+    mode,
+    userId,
+  });
   const service = await Service.findById(serviceId).lean();
   if (!service) return res.status(404).json({ error: "Service not found" });
   const variant = (service.variants || []).find((v) => v.name === variantName);
@@ -127,6 +138,23 @@ r.post("/", async (req, res) => {
   }
   if (!beautician)
     return res.status(400).json({ error: "No beautician available" });
+
+  console.log("[APPOINTMENT] Beautician:", {
+    id: beautician._id.toString(),
+    name: beautician.name,
+    stripeAccountId: beautician.stripeAccountId,
+    hasNoFeeSubscription:
+      beautician.subscription?.noFeeBookings?.enabled === true &&
+      beautician.subscription?.noFeeBookings?.status === "active",
+  });
+  console.log("[APPOINTMENT] Service:", {
+    id: service._id.toString(),
+    name: service.name,
+    variant: variant.name,
+    price: variant.price,
+    duration: variant.durationMin,
+  });
+
   const start = new Date(startISO);
   const end = new Date(
     start.getTime() +
@@ -188,7 +216,7 @@ r.post("/", async (req, res) => {
     };
   }
 
-  const appt = await Appointment.create({
+  const appointmentDoc = {
     client,
     beauticianId: beautician._id,
     serviceId,
@@ -199,7 +227,41 @@ r.post("/", async (req, res) => {
     status,
     ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
     ...(payment ? { payment } : {}),
-  });
+  };
+
+  console.log(
+    "[APPOINTMENT] Creating document:",
+    JSON.stringify(
+      {
+        client,
+        beauticianId: beautician._id.toString(),
+        serviceId: serviceId.toString(),
+        variantName,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        price: variant.price,
+        status,
+        userId: userId || null,
+        payment,
+      },
+      null,
+      2
+    )
+  );
+
+  const appt = await Appointment.create(appointmentDoc);
+
+  // Ensure the appointment is actually saved before proceeding
+  const savedAppt = await Appointment.findById(appt._id);
+  if (!savedAppt) {
+    console.error(
+      "[APPOINTMENT] Failed to verify appointment creation:",
+      appt._id
+    );
+    return res.status(500).json({ error: "Failed to create appointment" });
+  }
+
+  console.log("[APPOINTMENT] Created appointment:", appt._id.toString());
 
   // Handle deposit mode: create checkout session and send email
   if (isDeposit) {
@@ -255,6 +317,15 @@ r.post("/", async (req, res) => {
         });
       }
 
+      console.log("[DEPOSIT] Creating Stripe session:", {
+        appointmentId: appt._id.toString(),
+        depositAmount,
+        platformFee: hasNoFeeSubscription ? 0 : platformFee,
+        totalAmount: hasNoFeeSubscription ? depositAmount : totalAmount,
+        stripeAccountId: beautician.stripeAccountId,
+        customerEmail: client.email,
+      });
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: lineItems,
@@ -274,13 +345,35 @@ r.post("/", async (req, res) => {
           transfer_data: {
             destination: beautician.stripeAccountId,
           },
+          statement_descriptor: "NOBLE ELEGANCE",
+          statement_descriptor_suffix: "DEPOSIT",
         },
+      });
+
+      console.log("[DEPOSIT] Created Stripe session:", {
+        sessionId: session.id,
+        appointmentId: appt._id.toString(),
+        url: session.url,
       });
 
       // Update appointment with checkout details
       appt.payment.checkoutSessionId = session.id;
       appt.payment.checkoutUrl = session.url;
-      await appt.save();
+
+      try {
+        await appt.save();
+        console.log("[DEPOSIT] Appointment saved with session ID:", session.id);
+      } catch (saveError) {
+        console.error("[DEPOSIT] Failed to save appointment:", saveError);
+        // Try to update via findByIdAndUpdate as fallback
+        await Appointment.findByIdAndUpdate(appt._id, {
+          $set: {
+            "payment.checkoutSessionId": session.id,
+            "payment.checkoutUrl": session.url,
+          },
+        });
+        console.log("[DEPOSIT] Updated appointment via findByIdAndUpdate");
+      }
 
       // Send deposit payment email
       console.log("[DEPOSIT] Sending deposit payment email to:", client.email);
@@ -320,6 +413,12 @@ r.post("/", async (req, res) => {
       const bookingFeeAmount = 1.0; // £1.00
 
       // Create Stripe Checkout Session for booking fee only (no Connect account needed)
+      console.log("[BOOKING FEE] Creating Stripe session:", {
+        appointmentId: appt._id.toString(),
+        amount: bookingFeeAmount,
+        customerEmail: client.email,
+      });
+
       const stripe = getStripe();
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
@@ -344,12 +443,24 @@ r.post("/", async (req, res) => {
           appointmentId: appt._id.toString(),
           type: "booking_fee",
         },
+        payment_intent_data: {
+          statement_descriptor: "NOBLE ELEGANCE",
+          statement_descriptor_suffix: "BOOKING",
+        },
+      });
+
+      console.log("[BOOKING FEE] Created Stripe session:", {
+        sessionId: session.id,
+        appointmentId: appt._id.toString(),
+        url: session.url,
       });
 
       // Update appointment with checkout details
       appt.payment.checkoutSessionId = session.id;
       appt.payment.checkoutUrl = session.url;
       await appt.save();
+
+      console.log("[BOOKING FEE] Updated appointment with session");
 
       // Send booking fee payment email (we'll create this function)
       await sendBookingFeeEmail({

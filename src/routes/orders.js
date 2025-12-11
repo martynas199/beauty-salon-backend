@@ -589,6 +589,8 @@ router.post("/checkout", async (req, res) => {
           beauticianId: String(payment.beauticianId),
           type: "product_direct_payment",
         },
+        statement_descriptor: "NOBLE ELEGANCE",
+        statement_descriptor_suffix: "SHOP",
       };
 
       console.log(

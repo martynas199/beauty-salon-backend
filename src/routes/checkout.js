@@ -477,6 +477,8 @@ r.post("/create-session", async (req, res, next) => {
           beauticianId: String(appt.beauticianId),
           type: isDeposit ? "deposit" : "full",
         },
+        statement_descriptor: "NOBLE ELEGANCE",
+        statement_descriptor_suffix: isDeposit ? "DEPOSIT" : "SERVICE",
       };
       console.log(
         "[CHECKOUT] Creating DIRECT CHARGE on connected account:",
