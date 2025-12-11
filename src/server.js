@@ -35,6 +35,7 @@ import subscriptionsRouter from "./routes/subscriptions.js";
 import wishlistRouter from "./routes/wishlist.js";
 import blogPostsRouter from "./routes/blogPosts.js";
 import featuresRouter from "./routes/features.js";
+import promotionsRouter from "./routes/promotions.js";
 import {
   apiLimiter,
   authLimiter,
@@ -164,6 +165,7 @@ app.use("/api/admin/admins", adminsRouter); // Admin management routes
 app.use("/api/analytics", analyticsRouter); // Profit analytics routes
 app.use("/api/features", featuresRouter); // Premium features subscription routes
 app.use("/api/subscriptions", subscriptionsRouter); // E-commerce subscription routes
+app.use("/api/promotions", promotionsRouter); // Product promotional discounts
 
 // Error handling
 app.use((err, req, res, next) => {
