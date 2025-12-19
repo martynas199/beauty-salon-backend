@@ -320,11 +320,6 @@ function buildBlockingIntervals({
   for (const a of appointments || []) {
     // Skip all cancelled appointments (cancelled, cancelled_no_refund, cancelled_partial_refund, cancelled_full_refund)
     if (a.status && a.status.startsWith("cancelled")) {
-      console.log(`[buildBlockingIntervals] Skipping cancelled appointment:`, {
-        start: a.start,
-        end: a.end,
-        status: a.status,
-      });
       continue;
     }
     blocks.push({ start: new Date(a.start), end: new Date(a.end) });
@@ -359,12 +354,11 @@ export function computeSlotsForBeautician(params) {
     dayStartOverride,
     dayEndOverride,
   } = p;
-  if (beautician.active === false) return [];
+  
+  if (beautician.active === false) {
+    return [];
+  }
 
-  console.log(
-    "[computeSlotsForBeautician] beautician.customSchedule:",
-    beautician.customSchedule
-  );
   const windows = buildWorkingWindows(
     beautician.workingHours,
     date,
@@ -374,9 +368,13 @@ export function computeSlotsForBeautician(params) {
     },
     beautician.customSchedule || {} // Pass custom schedule if it exists
   );
-  if (!windows || windows.length === 0) return [];
+  
+  if (!windows || windows.length === 0) {
+    return [];
+  }
 
   const totalMin = totalBlockMin(service);
+  
   const blocks = buildBlockingIntervals({
     date,
     tz,

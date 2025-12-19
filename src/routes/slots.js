@@ -133,13 +133,25 @@ r.get("/fully-booked", async (req, res) => {
         continue;
       }
 
-      // Check if beautician works this day
+      // Check if beautician works this day (either regular hours OR custom schedule)
       const dayOfWeek = dateObj.day();
+      
+      // Normalize custom schedule (convert Map to object if needed)
+      const normalizedCustomSchedule =
+        beautician.customSchedule instanceof Map
+          ? Object.fromEntries(beautician.customSchedule)
+          : beautician.customSchedule || {};
+      
+      const hasCustomSchedule = normalizedCustomSchedule[dateStr] && 
+        Array.isArray(normalizedCustomSchedule[dateStr]) &&
+        normalizedCustomSchedule[dateStr].length > 0;
+      
       const worksThisDay = beautician.workingHours?.some(
         (wh) => wh.dayOfWeek === dayOfWeek
       );
 
-      if (!worksThisDay) {
+      // Skip only if there's no regular working hours AND no custom schedule
+      if (!worksThisDay && !hasCustomSchedule) {
         fullyBookedSet.add(dateStr);
         continue;
       }
