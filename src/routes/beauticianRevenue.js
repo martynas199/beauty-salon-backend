@@ -164,6 +164,10 @@ router.get("/analytics", requireAuth, async (req, res) => {
             ? parseFloat((totalServiceValue / appointments.length).toFixed(2))
             : 0,
       },
+      totals: {
+        allServicesBooked: parseFloat(totalServiceValue.toFixed(2)), // Total amount of all services booked in this period
+        totalAppointments: appointments.length,
+      },
       breakdown: {
         depositPayments: {
           amountReceived: parseFloat(totalDepositPaid.toFixed(2)), // Actual deposit amount paid
