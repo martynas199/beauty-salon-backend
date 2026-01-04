@@ -231,13 +231,9 @@ r.get("/confirm", async (req, res, next) => {
         );
 
         if (smsEnabled) {
-          const smsResult = await smsService.sendBookingConfirmation({
-            clientPhone: confirmedAppt.clientPhone,
-            serviceName: confirmedAppt.serviceName,
-            beauticianName: confirmedAppt.beauticianName,
-            date: confirmedAppt.date,
-            startTime: confirmedAppt.startTime,
-          });
+          const smsResult = await smsService.sendBookingConfirmation(
+            confirmedAppt
+          );
           console.log(
             "[CHECKOUT CONFIRM] SMS confirmation result:",
             smsResult.success ? "✓ Sent" : "✗ Failed"
