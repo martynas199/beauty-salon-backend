@@ -1761,6 +1761,166 @@ Noble Elegance Team
   }
 }
 
+/**
+ * Send remaining balance payment request email
+ */
+export async function sendRemainingBalanceEmail({
+  appointment,
+  service,
+  beautician,
+  remainingBalance,
+  checkoutUrl,
+}) {
+  console.log(
+    "[MAILER] sendRemainingBalanceEmail called for appointment:",
+    appointment?._id
+  );
+  const tx = getTransport();
+  if (!tx) {
+    console.warn("[MAILER] No transport - skipping remaining balance email");
+    return;
+  }
+
+  const from = process.env.SMTP_FROM || "noreply@yourdomain.com";
+  const customerEmail = appointment.client?.email;
+
+  if (!customerEmail) {
+    throw new Error("Customer email not found in appointment");
+  }
+
+  const serviceName = `${service.name}${
+    appointment.variantName ? ` - ${appointment.variantName}` : ""
+  }`;
+  const beauticianName = beautician.name || "your beautician";
+  const startTime = new Date(appointment.start).toLocaleString("en-GB", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const remainingBalanceStr = remainingBalance.toFixed(2);
+
+  const textContent = `
+Hi ${appointment.client?.name || "there"},
+
+Your appointment for ${serviceName} on ${startTime} with ${beauticianName} is coming up!
+
+You previously paid a deposit for this appointment. The remaining balance is now due.
+
+Please click the link below to pay the remaining balance:
+${checkoutUrl}
+
+Remaining balance to pay: £${remainingBalanceStr}
+
+Thank you for choosing Noble Elegance Beauty Salon!
+
+Best regards,
+Noble Elegance Team
+  `;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <!-- Header -->
+          <div style="background-color: #d4a710; padding: 40px 30px; text-align: center;">
+            <h1 style="color: #1f2937; margin: 0; font-size: 28px; font-weight: 600;">Remaining Balance Due</h1>
+          </div>
+
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hi <strong>${appointment.client?.name || "there"}</strong>,
+            </p>
+
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Your appointment for <strong>${serviceName}</strong> is coming up! You previously paid a deposit, and the remaining balance is now due.
+            </p>
+
+            <!-- Appointment Details Box -->
+            <div style="background-color: #f9fafb; border-left: 4px solid #d4a710; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 10px 0; color: #111827; font-weight: 600;">📅 Appointment Details</p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Service:</strong> ${serviceName}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Beautician:</strong> ${beauticianName}
+              </p>
+              <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
+                <strong>Date & Time:</strong> ${startTime}
+              </p>
+            </div>
+
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0;">
+              Please complete your payment using the button below:
+            </p>
+
+            <!-- Payment Button -->
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${checkoutUrl}" style="display: inline-block; background: #ffffff; color: #059669 !important; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border: 2px solid #10b981;">
+                <span style="color: #059669 !important;">Pay Remaining Balance</span>
+              </a>
+            </div>
+
+            <!-- Payment Breakdown -->
+            <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 15px 0; color: #111827; font-weight: 600;">💳 Payment Due</p>
+              <div style="text-align: center; padding: 20px 0;">
+                <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">Remaining Balance</p>
+                <p style="margin: 0; color: #d4a710; font-size: 32px; font-weight: 700;">£${remainingBalanceStr}</p>
+                <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 12px;">No additional fees</p>
+              </div>
+            </div>
+
+            <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 20px 0 0 0;">
+              If you can't click the button, copy and paste this link into your browser:<br>
+              <a href="${checkoutUrl}" style="color: #d4a710; word-break: break-all;">${checkoutUrl}</a>
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 13px; margin: 0 0 10px 0;">
+              Noble Elegance Beauty Salon<br>
+              12 Blackfriars Rd, Wisbech PE13 1AT<br>
+              Phone: +44 7928 775746
+            </p>
+            <p style="color: #9ca3af; font-size: 11px; margin: 15px 0 0 0;">
+              Appointment ID: ${String(appointment._id)}
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  try {
+    console.log("[MAILER] Sending remaining balance email to:", customerEmail);
+    const info = await tx.sendMail({
+      from,
+      to: customerEmail,
+      subject: `💰 Remaining Balance Due - ${serviceName}`,
+      text: textContent,
+      html: htmlContent,
+    });
+    console.log(
+      "[MAILER] ✓ Remaining balance email sent successfully. MessageId:",
+      info.messageId
+    );
+  } catch (error) {
+    console.error("[MAILER] ✗ Failed to send remaining balance email:", error);
+    throw error;
+  }
+}
+
 export async function sendBookingFeeEmail({
   appointment,
   service,

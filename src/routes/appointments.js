@@ -673,6 +673,111 @@ r.post("/:id/send-deposit-email", async (req, res) => {
   }
 });
 
+// Request remaining balance payment (for deposits where deposit was paid)
+r.post("/:id/request-remaining-balance", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appt = await Appointment.findById(id);
+
+    if (!appt) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Verify this is a deposit payment that was paid
+    if (appt.payment?.mode !== "deposit") {
+      return res.status(400).json({ error: "Not a deposit payment" });
+    }
+
+    if (appt.payment?.status !== "succeeded") {
+      return res.status(400).json({ error: "Deposit not yet paid" });
+    }
+
+    // Get service and beautician info
+    const [service, beautician] = await Promise.all([
+      Service.findById(appt.serviceId).lean(),
+      Beautician.findById(appt.beauticianId).lean(),
+    ]);
+
+    if (!service || !beautician) {
+      return res.status(400).json({ error: "Service or beautician not found" });
+    }
+
+    // Check if beautician has Stripe Connect
+    if (!beautician.stripeAccountId) {
+      return res.status(400).json({ error: "Beautician has no Stripe account" });
+    }
+
+    // Calculate remaining balance
+    // amountTotal includes deposit + booking fee (50p)
+    // So actual deposit paid = amountTotal - 50p
+    const variant = service.variants.find((v) => v.name === appt.variantName);
+    const variantPrice = Number(variant?.price || 0);
+    const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // 50 pence
+    const amountTotalPence = Number(appt.payment?.amountTotal || 0);
+    const depositPaidPence = amountTotalPence > platformFee ? amountTotalPence - platformFee : amountTotalPence;
+    const depositPaid = depositPaidPence / 100;
+    const remainingBalance = variantPrice - depositPaid;
+
+    if (remainingBalance <= 0) {
+      return res.status(400).json({ error: "No remaining balance" });
+    }
+
+    const stripe = getStripe();
+    const remainingBalanceInPence = Math.round(remainingBalance * 100);
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    // No additional booking fee - deposit already included the booking fee
+    // Create Stripe Checkout Session for remaining balance (100% to beautician)
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: `${service.name}${appt.variantName ? ` - ${appt.variantName}` : ""}`,
+              description: `Remaining balance for ${service.name} with ${beautician.name}`,
+            },
+            unit_amount: remainingBalanceInPence,
+          },
+          quantity: 1,
+        },
+      ],
+      payment_intent_data: {
+        application_fee_amount: 0, // No platform fee for remaining balance
+        transfer_data: {
+          destination: beautician.stripeAccountId,
+        },
+      },
+      success_url: `${frontendUrl}/booking/${id}/deposit-success`,
+      cancel_url: `${frontendUrl}/booking/${id}/deposit-cancel`,
+      metadata: {
+        appointmentId: id.toString(),
+        beauticianId: beautician._id.toString(),
+        remainingBalance: remainingBalanceInPence.toString(),
+        platformFee: "0",
+        type: "remaining_balance",
+      },
+    });
+
+    // Send remaining balance payment email
+    const { sendRemainingBalanceEmail } = await import("../emails/mailer.js");
+    await sendRemainingBalanceEmail({
+      appointment: appt.toObject(),
+      service,
+      beautician,
+      remainingBalance,
+      checkoutUrl: session.url,
+    });
+
+    res.json({ ok: true, message: "Remaining balance email sent", checkoutUrl: session.url });
+  } catch (err) {
+    console.error("Error requesting remaining balance:", err);
+    res.status(500).json({ error: err.message || "Failed to request remaining balance" });
+  }
+});
+
 // TEMPORARY: Manual deposit confirmation (for local testing without webhooks)
 // TODO: Remove this in production - webhooks should handle this
 r.post("/:id/confirm-deposit-payment", async (req, res) => {
