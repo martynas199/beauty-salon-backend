@@ -119,6 +119,27 @@ const BeauticianSchema = new mongoose.Schema(
         currentPeriodStart: Date,
         currentPeriodEnd: Date,
       },
+      smsConfirmations: {
+        enabled: { type: Boolean, default: false },
+        stripeSubscriptionId: String,
+        stripePriceId: String,
+        status: {
+          type: String,
+          enum: [
+            "inactive",
+            "active",
+            "past_due",
+            "canceled",
+            "incomplete",
+            "incomplete_expired",
+            "trialing",
+            "unpaid",
+          ],
+          default: "inactive",
+        },
+        currentPeriodStart: Date,
+        currentPeriodEnd: Date,
+      },
     },
   },
   { timestamps: true }

@@ -28,6 +28,12 @@ r.get("/:beauticianId", async (req, res) => {
         currentPeriodEnd:
           beautician.subscription?.noFeeBookings?.currentPeriodEnd || null,
       },
+      smsConfirmations: {
+        enabled: beautician.subscription?.smsConfirmations?.enabled || false,
+        status: beautician.subscription?.smsConfirmations?.status || "inactive",
+        currentPeriodEnd:
+          beautician.subscription?.smsConfirmations?.currentPeriodEnd || null,
+      },
     });
   } catch (err) {
     console.error("Error fetching features:", err);
@@ -150,6 +156,134 @@ r.post("/:beauticianId/cancel-no-fee", async (req, res) => {
     res
       .status(500)
       .json({ error: err.message || "Failed to cancel subscription" });
+  }
+});
+
+/**
+ * POST /api/features/:beauticianId/subscribe-sms
+ * Create SMS subscription checkout session
+ */
+r.post("/:beauticianId/subscribe-sms", async (req, res) => {
+  try {
+    const { beauticianId } = req.params;
+
+    const beautician = await Beautician.findById(beauticianId);
+    if (!beautician) {
+      return res.status(404).json({ error: "Beautician not found" });
+    }
+
+    // Check if already subscribed
+    if (beautician.subscription?.smsConfirmations?.enabled) {
+      return res
+        .status(400)
+        .json({ error: "Already subscribed to SMS confirmations" });
+    }
+
+    const stripe = getStripe();
+
+    // Create or get Stripe customer
+    let customerId = beautician.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: beautician.email,
+        name: beautician.name,
+        metadata: {
+          beauticianId: beautician._id.toString(),
+        },
+      });
+      customerId = customer.id;
+      beautician.stripeCustomerId = customerId;
+      await beautician.save();
+    }
+
+    // Get price ID from environment variable
+    const priceId = process.env.SMS_CONFIRMATIONS_PRICE_ID;
+    if (!priceId) {
+      return res
+        .status(500)
+        .json({ error: "SMS subscription price not configured" });
+    }
+
+    // Create checkout session for subscription
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.FRONTEND_URL}/admin/features?success=true&type=sms&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/admin/features?canceled=true`,
+      metadata: {
+        beauticianId: beautician._id.toString(),
+        feature: "sms_confirmations",
+      },
+      subscription_data: {
+        metadata: {
+          beauticianId: beautician._id.toString(),
+          feature: "sms_confirmations",
+        },
+      },
+    });
+
+    res.json({
+      ok: true,
+      checkoutUrl: session.url,
+      sessionId: session.id,
+    });
+  } catch (err) {
+    console.error("Error creating SMS subscription:", err);
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to create SMS subscription" });
+  }
+});
+
+/**
+ * POST /api/features/:beauticianId/cancel-sms
+ * Cancel SMS subscription (at end of period)
+ */
+r.post("/:beauticianId/cancel-sms", async (req, res) => {
+  try {
+    const { beauticianId } = req.params;
+
+    const beautician = await Beautician.findById(beauticianId);
+    if (!beautician) {
+      return res.status(404).json({ error: "Beautician not found" });
+    }
+
+    const subscriptionId =
+      beautician.subscription?.smsConfirmations?.stripeSubscriptionId;
+    if (!subscriptionId) {
+      return res
+        .status(400)
+        .json({ error: "No active SMS subscription found" });
+    }
+
+    const stripe = getStripe();
+
+    // Cancel at period end (don't cancel immediately)
+    await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+
+    // Update beautician record
+    beautician.subscription.smsConfirmations.status = "canceled";
+    await beautician.save();
+
+    res.json({
+      ok: true,
+      message:
+        "SMS subscription will be canceled at the end of the billing period",
+    });
+  } catch (err) {
+    console.error("Error canceling SMS subscription:", err);
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to cancel SMS subscription" });
   }
 });
 

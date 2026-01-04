@@ -9,6 +9,7 @@ import {
   sendAdminOrderNotification,
   sendBeauticianProductOrderNotification,
 } from "../emails/mailer.js";
+import smsService from "../services/smsService.js";
 
 const r = Router();
 let stripeInstance = null;
@@ -190,6 +191,43 @@ r.post("/stripe", async (req, res) => {
                 console.error(
                   "[WEBHOOK] Failed to send confirmation email:",
                   emailErr
+                );
+              }
+
+              // Send SMS confirmation if beautician has SMS enabled
+              try {
+                const beautician = await Beautician.findById(
+                  appointment.beauticianId
+                );
+                const smsEnabled =
+                  beautician?.subscription?.smsConfirmations?.enabled === true;
+
+                console.log("[WEBHOOK] SMS confirmations enabled:", smsEnabled);
+
+                if (smsEnabled) {
+                  const smsResult = await smsService.sendBookingConfirmation({
+                    clientPhone: appointment.clientPhone,
+                    serviceName: appointment.serviceName,
+                    beauticianName: appointment.beauticianName,
+                    date: appointment.date,
+                    startTime: appointment.startTime,
+                  });
+                  console.log(
+                    "[WEBHOOK] SMS confirmation result:",
+                    smsResult.success ? "✓ Sent" : "✗ Failed"
+                  );
+                  if (!smsResult.success) {
+                    console.error("[WEBHOOK] SMS error:", smsResult.error);
+                  }
+                } else {
+                  console.log(
+                    "[WEBHOOK] SMS confirmations not enabled for this beautician"
+                  );
+                }
+              } catch (smsErr) {
+                console.error(
+                  "[WEBHOOK] Failed to send SMS confirmation:",
+                  smsErr
                 );
               }
             }
@@ -578,6 +616,35 @@ r.post("/stripe", async (req, res) => {
             console.error("[WEBHOOK] subscription update err", e);
           }
         }
+
+        if (beauticianId && feature === "sms_confirmations") {
+          try {
+            const beautician = await Beautician.findById(beauticianId);
+            if (beautician) {
+              beautician.subscription = beautician.subscription || {};
+              beautician.subscription.smsConfirmations = {
+                enabled: subscription.status === "active",
+                stripeSubscriptionId: subscription.id,
+                stripePriceId: subscription.items.data[0]?.price.id,
+                status: subscription.status,
+                currentPeriodStart: new Date(
+                  subscription.current_period_start * 1000
+                ),
+                currentPeriodEnd: new Date(
+                  subscription.current_period_end * 1000
+                ),
+              };
+              await beautician.save();
+              console.log(
+                "[WEBHOOK] Beautician",
+                beauticianId,
+                "SMS subscription updated"
+              );
+            }
+          } catch (e) {
+            console.error("[WEBHOOK] SMS subscription update err", e);
+          }
+        }
         break;
       }
 
@@ -608,6 +675,24 @@ r.post("/stripe", async (req, res) => {
             }
           } catch (e) {
             console.error("[WEBHOOK] subscription delete err", e);
+          }
+        }
+
+        if (beauticianId && feature === "sms_confirmations") {
+          try {
+            const beautician = await Beautician.findById(beauticianId);
+            if (beautician && beautician.subscription?.smsConfirmations) {
+              beautician.subscription.smsConfirmations.enabled = false;
+              beautician.subscription.smsConfirmations.status = "canceled";
+              await beautician.save();
+              console.log(
+                "[WEBHOOK] Beautician",
+                beauticianId,
+                "SMS subscription canceled"
+              );
+            }
+          } catch (e) {
+            console.error("[WEBHOOK] SMS subscription delete err", e);
           }
         }
         break;
