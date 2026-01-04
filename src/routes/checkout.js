@@ -4,6 +4,7 @@ import Service from "../models/Service.js";
 import Beautician from "../models/Beautician.js";
 import Appointment from "../models/Appointment.js";
 import { sendConfirmationEmail } from "../emails/mailer.js";
+import smsService from "../services/smsService.js";
 
 const r = Router();
 let stripeInstance = null;
@@ -215,6 +216,47 @@ r.get("/confirm", async (req, res, next) => {
         "[CHECKOUT CONFIRM] Confirmation email sent to:",
         confirmedAppt.client?.email
       );
+
+      // Send SMS confirmation if beautician has SMS enabled
+      try {
+        const beauticianData = await Beautician.findById(
+          confirmedAppt.beauticianId
+        );
+        const smsEnabled =
+          beauticianData?.subscription?.smsConfirmations?.enabled === true;
+
+        console.log(
+          "[CHECKOUT CONFIRM] SMS confirmations enabled:",
+          smsEnabled
+        );
+
+        if (smsEnabled) {
+          const smsResult = await smsService.sendBookingConfirmation({
+            clientPhone: confirmedAppt.clientPhone,
+            serviceName: confirmedAppt.serviceName,
+            beauticianName: confirmedAppt.beauticianName,
+            date: confirmedAppt.date,
+            startTime: confirmedAppt.startTime,
+          });
+          console.log(
+            "[CHECKOUT CONFIRM] SMS confirmation result:",
+            smsResult.success ? "✓ Sent" : "✗ Failed"
+          );
+          if (!smsResult.success) {
+            console.error("[CHECKOUT CONFIRM] SMS error:", smsResult.error);
+          }
+        } else {
+          console.log(
+            "[CHECKOUT CONFIRM] SMS confirmations not enabled for this beautician"
+          );
+        }
+      } catch (smsErr) {
+        console.error(
+          "[CHECKOUT CONFIRM] Failed to send SMS confirmation:",
+          smsErr
+        );
+        // Don't fail the request if SMS fails
+      }
     } catch (emailErr) {
       console.error(
         "[CHECKOUT CONFIRM] Failed to send confirmation email:",
