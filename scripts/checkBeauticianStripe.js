@@ -34,9 +34,15 @@ async function checkBeauticianStripe() {
       console.log(
         `Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`
       );
+      console.log(
+        `Stripe Account Type: ${beautician.stripeAccountType || "NOT SET"}`
+      );
       console.log(`Stripe Status: ${beautician.stripeStatus || "NOT SET"}`);
       console.log(
         `Onboarding Completed: ${beautician.stripeOnboardingCompleted || false}`
+      );
+      console.log(
+        `Payouts Enabled: ${beautician.stripePayoutsEnabled || false}`
       );
       console.log("---");
     }

@@ -59,8 +59,12 @@ router.post("/onboard", async (req, res) => {
 
     // Create new Stripe Connect account if doesn't exist
     if (!stripeAccountId) {
+      console.log(
+        `[CONNECT] Creating Standard account for beautician ${beauticianId}`
+      );
+
       const account = await stripe.accounts.create({
-        type: "express",
+        type: "standard",
         country: "GB",
         email: email,
         capabilities: {
@@ -72,10 +76,13 @@ router.post("/onboard", async (req, res) => {
 
       stripeAccountId = account.id;
 
-      // Save Stripe account ID to database
+      // Save Stripe account ID and type to database
       beautician.stripeAccountId = stripeAccountId;
+      beautician.stripeAccountType = "standard";
       beautician.stripeStatus = "pending";
       await beautician.save();
+
+      console.log(`[CONNECT] Created Standard account: ${stripeAccountId}`);
     }
 
     // Create account link for onboarding
@@ -93,6 +100,7 @@ router.post("/onboard", async (req, res) => {
       success: true,
       url: accountLink.url,
       stripeAccountId: stripeAccountId,
+      accountType: "standard",
     });
   } catch (error) {
     console.error("Stripe Connect onboarding error:", error);
@@ -121,6 +129,7 @@ router.get("/status/:beauticianId", async (req, res) => {
         status: "not_connected",
         connected: false,
         stripeAccountId: null,
+        accountType: null,
       });
     }
 
@@ -144,6 +153,7 @@ router.get("/status/:beauticianId", async (req, res) => {
         status: "not_connected",
         connected: false,
         stripeAccountId: null,
+        accountType: null,
         message:
           "Previous account was invalid and has been cleared. Please reconnect.",
       });
@@ -156,6 +166,7 @@ router.get("/status/:beauticianId", async (req, res) => {
     if (isComplete && beautician.stripeStatus !== "connected") {
       beautician.stripeStatus = "connected";
       beautician.stripeOnboardingCompleted = true;
+      beautician.stripePayoutsEnabled = account.payouts_enabled || false;
       await beautician.save();
     } else if (!isComplete && beautician.stripeStatus === "connected") {
       beautician.stripeStatus = "pending";
@@ -167,6 +178,7 @@ router.get("/status/:beauticianId", async (req, res) => {
       status: beautician.stripeStatus,
       connected: isComplete,
       stripeAccountId: beautician.stripeAccountId,
+      accountType: "standard",
       chargesEnabled: account.charges_enabled,
       detailsSubmitted: account.details_submitted,
       payoutsEnabled: account.payouts_enabled,
@@ -183,7 +195,8 @@ router.get("/status/:beauticianId", async (req, res) => {
 
 /**
  * POST /api/connect/dashboard-link/:beauticianId
- * Generate a login link for beautician to access their Stripe Express dashboard
+ * Generate a login link for beautician to access their Stripe dashboard
+ * For Standard accounts, returns the Stripe dashboard URL
  */
 router.post("/dashboard-link/:beauticianId", async (req, res) => {
   try {
@@ -196,6 +209,20 @@ router.post("/dashboard-link/:beauticianId", async (req, res) => {
       });
     }
 
+    const accountType = beautician.stripeAccountType || "standard";
+
+    // For Standard accounts, users log in directly to Stripe's dashboard
+    if (accountType === "standard") {
+      res.json({
+        success: true,
+        url: "https://dashboard.stripe.com",
+        accountType: "standard",
+        message: "Please log in with your Stripe account credentials",
+      });
+      return;
+    }
+
+    // For Express/Custom accounts, generate a login link
     const stripe = getStripe();
     const loginLink = await stripe.accounts.createLoginLink(
       beautician.stripeAccountId
@@ -204,6 +231,7 @@ router.post("/dashboard-link/:beauticianId", async (req, res) => {
     res.json({
       success: true,
       url: loginLink.url,
+      accountType: accountType,
     });
   } catch (error) {
     console.error("Stripe dashboard link error:", error);

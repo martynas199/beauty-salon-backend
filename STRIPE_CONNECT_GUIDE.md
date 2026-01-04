@@ -2,7 +2,7 @@
 
 ## Overview
 
-This system uses **Stripe Connect Express** accounts to enable direct payouts to beauticians for both:
+This system uses **Stripe Connect Standard** accounts to enable direct payouts to beauticians for both:
 
 - **Service Bookings** - Platform keeps £0.50 per completed booking
 - **Product Sales** - 100% goes to product owner (beautician)
@@ -21,7 +21,7 @@ Client Payment → Stripe → Split Payment:
 
 1. Log into your Stripe Dashboard
 2. Navigate to **Connect → Settings**
-3. Enable **Express** account type
+3. Enable **Standard** account type
 4. Set your platform name and branding
 5. Configure webhook endpoints (see Webhooks section below)
 
@@ -100,12 +100,16 @@ Response:
 ```http
 POST /api/connect/dashboard-link/:beauticianId
 
-Response:
+Response (for Standard accounts):
 {
   "success": true,
-  "url": "https://connect.stripe.com/express/..."
+  "url": "https://dashboard.stripe.com",
+  "accountType": "standard",
+  "message": "Please log in with your Stripe account credentials"
 }
 ```
+
+**Note:** Standard account users log in directly to their Stripe dashboard using their own credentials. They have full access to their Stripe account settings and data.
 
 ### Revenue Reports
 
@@ -359,14 +363,30 @@ Stripe handles all KYC verification during onboarding:
 ### Payouts
 
 - Automatic daily payouts (after 2-day rolling basis)
-- Beauticians can view in Stripe Express dashboard
-- Platform has no control over payout timing
+- Beauticians can view in their Stripe dashboard
+- Standard account users have full control over their own payout settings
 
 ### Tax Reporting
 
 - Stripe provides 1099 forms (US) or equivalent
 - Beauticians responsible for own tax reporting
 - Platform should provide revenue summaries
+
+## Key Differences: Standard vs Express Accounts
+
+### Standard Accounts (Current Implementation)
+
+**Benefits:**
+- ✅ No monthly fees from Stripe
+- ✅ Beauticians have full access to their Stripe account
+- ✅ Direct login to Stripe dashboard with their own credentials
+- ✅ Complete control over settings and payouts
+- ✅ Can use their account outside of your platform
+
+**Considerations:**
+- Beauticians manage their own Stripe account
+- Platform provides link to Stripe's dashboard (not embedded)
+- More autonomy for beauticians
 
 ## Troubleshooting
 

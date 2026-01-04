@@ -14,9 +14,11 @@ All Stripe Connect features have been implemented for both backend and frontend.
 
 - **Beautician Model**: Added Stripe Connect fields
 
-  - `stripeAccountId` - Express account ID
-  - `stripeStatus` - Account status (not_connected, pending, connected, rejected)
+  - `stripeAccountId` - Standard account ID
+  - `stripeAccountType` - Account type (default: "standard")
+  - `stripeStatus` - Account status (not_connected, pending, connected, rejected, disconnected)
   - `stripeOnboardingCompleted` - Boolean flag
+  - `stripePayoutsEnabled` - Payout capability status
   - `totalEarnings`, `totalPayouts`, `lastPayoutDate` - Tracking fields
 
 - **Appointment Model**: Extended payment tracking
@@ -37,9 +39,9 @@ All Stripe Connect features have been implemented for both backend and frontend.
 
 **Connect Routes** (`/api/connect`):
 
-- ✅ `POST /onboard` - Create Express account & return onboarding URL
+- ✅ `POST /onboard` - Create Standard account & return onboarding URL
 - ✅ `GET /status/:beauticianId` - Check account verification status
-- ✅ `POST /dashboard-link/:beauticianId` - Generate Stripe dashboard URL
+- ✅ `POST /dashboard-link/:beauticianId` - Return Stripe dashboard URL (Standard accounts log in with own credentials)
 - ✅ `DELETE /disconnect/:beauticianId` - Disconnect account
 
 **Reports Routes** (`/api/reports`):
