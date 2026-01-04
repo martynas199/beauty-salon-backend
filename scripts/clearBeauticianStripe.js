@@ -42,11 +42,19 @@ async function clearBeauticianStripe() {
     console.log("=== Current Beautician Info ===");
     console.log(`Name: ${beautician.name}`);
     console.log(`ID: ${beautician._id}`);
-    console.log(`Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`);
-    console.log(`Stripe Account Type: ${beautician.stripeAccountType || "NOT SET"}`);
+    console.log(
+      `Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`
+    );
+    console.log(
+      `Stripe Account Type: ${beautician.stripeAccountType || "NOT SET"}`
+    );
     console.log(`Stripe Status: ${beautician.stripeStatus || "NOT SET"}`);
-    console.log(`Onboarding Completed: ${beautician.stripeOnboardingCompleted || false}`);
-    console.log(`Payouts Enabled: ${beautician.stripePayoutsEnabled || false}\n`);
+    console.log(
+      `Onboarding Completed: ${beautician.stripeOnboardingCompleted || false}`
+    );
+    console.log(
+      `Payouts Enabled: ${beautician.stripePayoutsEnabled || false}\n`
+    );
 
     // Clear Stripe fields
     beautician.stripeAccountId = null;
@@ -54,17 +62,21 @@ async function clearBeauticianStripe() {
     beautician.stripeStatus = "not_connected";
     beautician.stripeOnboardingCompleted = false;
     beautician.stripePayoutsEnabled = false;
-    
+
     await beautician.save();
 
     console.log("✅ Stripe account cleared successfully!\n");
     console.log("=== Updated Beautician Info ===");
     console.log(`Name: ${beautician.name}`);
     console.log(`ID: ${beautician._id}`);
-    console.log(`Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`);
+    console.log(
+      `Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`
+    );
     console.log(`Stripe Status: ${beautician.stripeStatus}`);
-    console.log(`Onboarding Completed: ${beautician.stripeOnboardingCompleted}\n`);
-    
+    console.log(
+      `Onboarding Completed: ${beautician.stripeOnboardingCompleted}\n`
+    );
+
     console.log("Next steps:");
     console.log("1. Beautician can now reconnect through the admin panel");
     console.log("2. New account will be created as Standard account");

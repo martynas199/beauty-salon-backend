@@ -74,7 +74,8 @@ r.post("/stripe", async (req, res) => {
             const isManualDeposit =
               session.metadata?.type === "manual_appointment_deposit";
             const isBookingFee = session.metadata?.type === "booking_fee";
-            const isRemainingBalance = session.metadata?.type === "remaining_balance";
+            const isRemainingBalance =
+              session.metadata?.type === "remaining_balance";
 
             // Retrieve payment intent to get transfer info (not needed for booking fee)
             let transferId = null;
@@ -108,7 +109,7 @@ r.post("/stripe", async (req, res) => {
                   : isBookingFee
                   ? "booking_fee"
                   : isRemainingBalance
-                  ? "pay_now"  // When remaining balance is paid, it's fully paid
+                  ? "pay_now" // When remaining balance is paid, it's fully paid
                   : "pay_now",
                 "payment.sessionId": session.id,
                 ...(isManualDeposit || isBookingFee || isRemainingBalance

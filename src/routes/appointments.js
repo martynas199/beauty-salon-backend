@@ -704,7 +704,9 @@ r.post("/:id/request-remaining-balance", async (req, res) => {
 
     // Check if beautician has Stripe Connect
     if (!beautician.stripeAccountId) {
-      return res.status(400).json({ error: "Beautician has no Stripe account" });
+      return res
+        .status(400)
+        .json({ error: "Beautician has no Stripe account" });
     }
 
     // Calculate remaining balance
@@ -714,7 +716,10 @@ r.post("/:id/request-remaining-balance", async (req, res) => {
     const variantPrice = Number(variant?.price || 0);
     const platformFee = Number(process.env.STRIPE_PLATFORM_FEE || 50); // 50 pence
     const amountTotalPence = Number(appt.payment?.amountTotal || 0);
-    const depositPaidPence = amountTotalPence > platformFee ? amountTotalPence - platformFee : amountTotalPence;
+    const depositPaidPence =
+      amountTotalPence > platformFee
+        ? amountTotalPence - platformFee
+        : amountTotalPence;
     const depositPaid = depositPaidPence / 100;
     const remainingBalance = variantPrice - depositPaid;
 
@@ -736,7 +741,9 @@ r.post("/:id/request-remaining-balance", async (req, res) => {
           price_data: {
             currency: "gbp",
             product_data: {
-              name: `${service.name}${appt.variantName ? ` - ${appt.variantName}` : ""}`,
+              name: `${service.name}${
+                appt.variantName ? ` - ${appt.variantName}` : ""
+              }`,
               description: `Remaining balance for ${service.name} with ${beautician.name}`,
             },
             unit_amount: remainingBalanceInPence,
@@ -750,7 +757,7 @@ r.post("/:id/request-remaining-balance", async (req, res) => {
           destination: beautician.stripeAccountId,
         },
       },
-      success_url: `${frontendUrl}/booking/${id}/deposit-success`,
+      success_url: `${frontendUrl}/booking/${id}/balance-paid`,
       cancel_url: `${frontendUrl}/booking/${id}/deposit-cancel`,
       metadata: {
         appointmentId: id.toString(),
@@ -771,10 +778,16 @@ r.post("/:id/request-remaining-balance", async (req, res) => {
       checkoutUrl: session.url,
     });
 
-    res.json({ ok: true, message: "Remaining balance email sent", checkoutUrl: session.url });
+    res.json({
+      ok: true,
+      message: "Remaining balance email sent",
+      checkoutUrl: session.url,
+    });
   } catch (err) {
     console.error("Error requesting remaining balance:", err);
-    res.status(500).json({ error: err.message || "Failed to request remaining balance" });
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to request remaining balance" });
   }
 });
 

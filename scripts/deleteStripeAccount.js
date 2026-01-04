@@ -23,7 +23,8 @@ async function deleteStripeAccount() {
     }
 
     // Initialize Stripe
-    const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET;
+    const stripeKey =
+      process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET;
     if (!stripeKey) {
       throw new Error("STRIPE_SECRET_KEY or STRIPE_SECRET not configured");
     }
@@ -32,7 +33,9 @@ async function deleteStripeAccount() {
     // Connect to MongoDB
     const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
     if (!mongoUri) {
-      throw new Error("MONGODB_URI or MONGO_URI not found in environment variables");
+      throw new Error(
+        "MONGODB_URI or MONGO_URI not found in environment variables"
+      );
     }
 
     await mongoose.connect(mongoUri);
@@ -48,7 +51,9 @@ async function deleteStripeAccount() {
       console.log(`Stripe Account ID: ${beautician.stripeAccountId}`);
       console.log(`Stripe Status: ${beautician.stripeStatus}\n`);
     } else {
-      console.log(`⚠️  No beautician found with Stripe account ID: ${stripeAccountId}`);
+      console.log(
+        `⚠️  No beautician found with Stripe account ID: ${stripeAccountId}`
+      );
       console.log("Proceeding to delete from Stripe only...\n");
     }
 
@@ -56,10 +61,14 @@ async function deleteStripeAccount() {
     console.log("🗑️  Deleting account from Stripe...");
     try {
       await stripe.accounts.del(stripeAccountId);
-      console.log("✅ Successfully deleted Stripe account: " + stripeAccountId + "\n");
+      console.log(
+        "✅ Successfully deleted Stripe account: " + stripeAccountId + "\n"
+      );
     } catch (stripeError) {
-      if (stripeError.code === 'resource_missing') {
-        console.log("⚠️  Account not found in Stripe (may already be deleted)\n");
+      if (stripeError.code === "resource_missing") {
+        console.log(
+          "⚠️  Account not found in Stripe (may already be deleted)\n"
+        );
       } else {
         throw stripeError;
       }
@@ -78,7 +87,9 @@ async function deleteStripeAccount() {
 
       console.log("=== Updated Beautician Info ===");
       console.log(`Name: ${beautician.name}`);
-      console.log(`Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`);
+      console.log(
+        `Stripe Account ID: ${beautician.stripeAccountId || "NOT SET"}`
+      );
       console.log(`Stripe Status: ${beautician.stripeStatus}\n`);
     }
 
@@ -90,8 +101,10 @@ async function deleteStripeAccount() {
     process.exit(0);
   } catch (error) {
     console.error("❌ Error:", error.message);
-    if (error.type === 'StripePermissionError') {
-      console.error("\n⚠️  Permission Error: Make sure you're using the correct Stripe secret key");
+    if (error.type === "StripePermissionError") {
+      console.error(
+        "\n⚠️  Permission Error: Make sure you're using the correct Stripe secret key"
+      );
     }
     process.exit(1);
   } finally {

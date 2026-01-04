@@ -377,6 +377,7 @@ Stripe handles all KYC verification during onboarding:
 ### Standard Accounts (Current Implementation)
 
 **Benefits:**
+
 - ✅ No monthly fees from Stripe
 - ✅ Beauticians have full access to their Stripe account
 - ✅ Direct login to Stripe dashboard with their own credentials
@@ -384,6 +385,7 @@ Stripe handles all KYC verification during onboarding:
 - ✅ Can use their account outside of your platform
 
 **Considerations:**
+
 - Beauticians manage their own Stripe account
 - Platform provides link to Stripe's dashboard (not embedded)
 - More autonomy for beauticians
