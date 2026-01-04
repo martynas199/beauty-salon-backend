@@ -36,6 +36,7 @@ import wishlistRouter from "./routes/wishlist.js";
 import blogPostsRouter from "./routes/blogPosts.js";
 import featuresRouter from "./routes/features.js";
 import promotionsRouter from "./routes/promotions.js";
+import beauticianRevenueRouter from "./routes/beauticianRevenue.js";
 import {
   apiLimiter,
   authLimiter,
@@ -166,6 +167,7 @@ app.use("/api/analytics", analyticsRouter); // Profit analytics routes
 app.use("/api/features", featuresRouter); // Premium features subscription routes
 app.use("/api/subscriptions", subscriptionsRouter); // E-commerce subscription routes
 app.use("/api/promotions", promotionsRouter); // Product promotional discounts
+app.use("/api/beautician-revenue", beauticianRevenueRouter); // Beautician revenue analytics
 
 // Error handling
 app.use((err, req, res, next) => {
