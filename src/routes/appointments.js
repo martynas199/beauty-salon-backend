@@ -608,7 +608,12 @@ r.post("/:id/create-deposit-checkout", async (req, res) => {
         beauticianStripeAccount: beautician.stripeAccountId,
       },
     };
-    appt.status = "reserved_unpaid";
+    // Keep status as confirmed for manually created appointments (staff-created)
+    // Don't change to reserved_unpaid as these are confirmed bookings where payment comes later
+    // Status is only reserved_unpaid for customer-initiated online bookings requiring immediate payment
+    if (appt.status !== "confirmed") {
+      appt.status = "confirmed";
+    }
     await appt.save();
 
     res.json({
