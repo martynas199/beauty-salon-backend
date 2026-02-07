@@ -385,8 +385,68 @@ r.post("/create-session", async (req, res, next) => {
     const amountToPay = amountBeforeFee + platformFee / 100; // Convert pence to pounds
 
     const unit_amount = toMinorUnits(amountToPay);
-    if (unit_amount < 1)
+    
+    // If both in-salon payment and no-fee subscription are active, 
+    // there's nothing to charge - confirm the appointment directly
+    if (unit_amount < 1) {
+      if (beautician?.inSalonPayment && hasNoFeeSubscription) {
+        console.log(
+          "[CHECKOUT] Beautician has in-salon payment + no-fee subscription. Confirming appointment without payment."
+        );
+        
+        // Update appointment to confirmed status with pay_in_salon mode
+        await Appointment.findByIdAndUpdate(appt._id, {
+          $set: {
+            status: "confirmed",
+            payment: {
+              mode: "pay_in_salon",
+              provider: "cash",
+              status: "unpaid",
+              amountTotal: toMinorUnits(baseAmount),
+            },
+          },
+          $push: {
+            audit: {
+              at: new Date(),
+              action: "auto_confirm_no_fee_in_salon",
+              meta: { reason: "no-fee subscription + in-salon payment" },
+            },
+          },
+        });
+        
+        // Send confirmation email
+        try {
+          const confirmedAppt = await Appointment.findById(appt._id)
+            .populate("serviceId")
+            .populate("beauticianId");
+          
+          await sendConfirmationEmail({
+            appointment: confirmedAppt,
+            service: confirmedAppt.serviceId,
+            beautician: confirmedAppt.beauticianId,
+          });
+          
+          console.log(
+            "[CHECKOUT] Confirmation email sent for no-fee in-salon booking"
+          );
+        } catch (emailErr) {
+          console.error(
+            "[CHECKOUT] Failed to send confirmation email:",
+            emailErr
+          );
+        }
+        
+        // Return success with appointment confirmed
+        return res.json({ 
+          ok: true, 
+          confirmed: true, 
+          appointmentId: appt._id,
+          message: "Appointment confirmed - no payment required" 
+        });
+      }
+      
       return res.status(400).json({ error: "Invalid amount" });
+    }
 
     // Get the appropriate Stripe instance
     const stripe = getStripe(
