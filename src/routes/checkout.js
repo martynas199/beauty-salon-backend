@@ -294,6 +294,7 @@ r.post("/create-session", async (req, res, next) => {
         startISO,
         client,
         userId,
+        locationId,
       } = req.body || {};
       service = await Service.findById(serviceId).lean();
       if (!service) return res.status(404).json({ error: "Service not found" });
@@ -337,6 +338,7 @@ r.post("/create-session", async (req, res, next) => {
         price: variant.promoPrice || variant.price,
         status: "reserved_unpaid",
         ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
+        ...(locationId ? { locationId } : {}), // Add locationId if provided
       });
       appt = appt.toObject();
     }

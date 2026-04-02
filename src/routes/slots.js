@@ -50,7 +50,7 @@ function normalizeBeautician(beautician) {
  */
 r.get("/fully-booked", async (req, res) => {
   try {
-    const { beauticianId, year, month } = req.query;
+    const { beauticianId, year, month, locationId } = req.query;
 
     // Validation
     if (!beauticianId || !year || !month) {
@@ -66,11 +66,11 @@ r.get("/fully-booked", async (req, res) => {
       return res.status(400).json({ error: "Invalid year or month" });
     }
 
-    // Check cache
+    // Check cache (include locationId in cache key)
     const cacheKey = `${beauticianId}:${year}-${String(monthNum).padStart(
       2,
-      "0"
-    )}`;
+      "0",
+    )}:${locationId || "all"}`;
     const cached = fullyBookedCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return res.json({ fullyBooked: cached.data });
@@ -96,14 +96,14 @@ r.get("/fully-booked", async (req, res) => {
     if (services.length === 0) {
       // No services = all days fully booked
       const daysInMonth = dayjs(
-        `${year}-${String(monthNum).padStart(2, "0")}-01`
+        `${year}-${String(monthNum).padStart(2, "0")}-01`,
       ).daysInMonth();
       const allDates = Array.from(
         { length: daysInMonth },
         (_, i) =>
           `${year}-${String(monthNum).padStart(2, "0")}-${String(
-            i + 1
-          ).padStart(2, "0")}`
+            i + 1,
+          ).padStart(2, "0")}`,
       );
       fullyBookedCache.set(cacheKey, { data: allDates, timestamp: Date.now() });
       return res.json({ fullyBooked: allDates });
@@ -122,11 +122,15 @@ r.get("/fully-booked", async (req, res) => {
     // PERFORMANCE: Fetch ALL appointments for the month in ONE query instead of per-day
     const monthStartDate = monthStart.toDate();
     const monthEndDate = monthEnd.toDate();
-    const allMonthAppointments = await Appointment.find({
+    const monthAppointmentQuery = {
       beauticianId,
       start: { $gte: monthStartDate, $lt: monthEndDate },
       status: { $ne: "cancelled" },
-    })
+    };
+    if (locationId) {
+      monthAppointmentQuery.locationId = locationId;
+    }
+    const allMonthAppointments = await Appointment.find(monthAppointmentQuery)
       .select("start end status") // Only fetch needed fields
       .lean();
 
@@ -162,7 +166,7 @@ r.get("/fully-booked", async (req, res) => {
     const daysInMonth = monthStart.daysInMonth();
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(monthNum).padStart(2, "0")}-${String(
-        day
+        day,
       ).padStart(2, "0")}`;
       const dateObj = dayjs.tz(dateStr, salonTz);
 
@@ -174,14 +178,30 @@ r.get("/fully-booked", async (req, res) => {
 
       // Check if beautician works this day (either regular hours OR custom schedule)
       const dayOfWeek = dateObj.day();
-      
-      const hasCustomSchedule = normalizedCustomSchedule[dateStr] && 
-        Array.isArray(normalizedCustomSchedule[dateStr]) &&
-        normalizedCustomSchedule[dateStr].length > 0;
-      
-      const worksThisDay = beautician.workingHours?.some(
-        (wh) => wh.dayOfWeek === dayOfWeek
-      );
+
+      // Filter custom schedule by locationId if provided
+      let customScheduleForDate = normalizedCustomSchedule[dateStr];
+      if (customScheduleForDate && locationId) {
+        customScheduleForDate = customScheduleForDate.filter(
+          (cs) => !cs.locationId || cs.locationId.toString() === locationId,
+        );
+      }
+
+      const hasCustomSchedule =
+        Array.isArray(customScheduleForDate) && customScheduleForDate.length > 0;
+
+      // Filter working hours by locationId if provided
+      let workingHoursForDay =
+        beautician.workingHours?.filter((wh) => wh.dayOfWeek === dayOfWeek) ||
+        [];
+
+      if (locationId) {
+        workingHoursForDay = workingHoursForDay.filter(
+          (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+        );
+      }
+
+      const worksThisDay = workingHoursForDay.length > 0;
 
       // Skip only if there's no regular working hours AND no custom schedule
       if (!worksThisDay && !hasCustomSchedule) {
@@ -236,7 +256,8 @@ r.get("/fully-booked", async (req, res) => {
 });
 
 r.get("/", async (req, res) => {
-  const { beauticianId, serviceId, variantName, date, any } = req.query;
+  const { beauticianId, serviceId, variantName, date, any, locationId } =
+    req.query;
   if (!serviceId || !variantName || !date)
     return res.status(400).json({ error: "Missing params" });
   
@@ -270,20 +291,49 @@ r.get("/", async (req, res) => {
     
     const dayStart = new Date(date);
     const dayEnd = new Date(new Date(date).getTime() + 86400000);
-    const appts = await Appointment.find({
+    const appointmentQuery = {
       beauticianId: targetId,
       start: { $gte: dayStart, $lt: dayEnd },
       status: { $ne: "cancelled" },
-    })
+    };
+    if (locationId) {
+      appointmentQuery.locationId = locationId;
+    }
+    const appts = await Appointment.find(appointmentQuery)
       .select("start end status")
       .lean();
-    
+
+    // Filter working hours by location if specified
+    const filteredBeautician = locationId
+      ? {
+          ...b,
+          workingHours: (b.workingHours || []).filter(
+            (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+          ),
+          // Also filter customSchedule by location
+          customSchedule: Object.fromEntries(
+            Object.entries(
+              b.customSchedule instanceof Map
+                ? Object.fromEntries(b.customSchedule)
+                : b.customSchedule || {},
+            )
+              .map(([date, hours]) => [
+                date,
+                hours.filter(
+                  (h) =>
+                    !h.locationId || h.locationId.toString() === locationId,
+                ),
+              ])
+              .filter(([, hours]) => hours.length > 0), // Remove empty dates
+          ),
+        }
+      : b;
     slots = computeSlotsForBeautician({
       date,
       salonTz,
       stepMin,
       service: svc,
-      beautician: normalizeBeautician(b),
+      beautician: normalizeBeautician(filteredBeautician),
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),
@@ -294,16 +344,46 @@ r.get("/", async (req, res) => {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
 
-    const normalizedBeautician = normalizeBeautician(b);
+    // Filter working hours by location if specified
+    const filteredBeautician = locationId
+      ? {
+          ...b,
+          workingHours: (b.workingHours || []).filter(
+            (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+          ),
+          // Also filter customSchedule by location
+          customSchedule: Object.fromEntries(
+            Object.entries(
+              b.customSchedule instanceof Map
+                ? Object.fromEntries(b.customSchedule)
+                : b.customSchedule || {},
+            )
+              .map(([date, hours]) => [
+                date,
+                hours.filter(
+                  (h) =>
+                    !h.locationId || h.locationId.toString() === locationId,
+                ),
+              ])
+              .filter(([date, hours]) => hours.length > 0), // Remove empty dates
+          ),
+        }
+      : b;
 
-    const appts = await Appointment.find({
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
+
+    const appointmentQuery = {
       beauticianId,
       start: {
         $gte: new Date(date),
         $lt: new Date(new Date(date).getTime() + 86400000),
       },
       status: { $ne: "cancelled" },
-    })
+    };
+    if (locationId) {
+      appointmentQuery.locationId = locationId;
+    }
+    const appts = await Appointment.find(appointmentQuery)
       .select("start end status")
       .lean();
 

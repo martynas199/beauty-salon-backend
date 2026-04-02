@@ -17,7 +17,7 @@ const PaymentStripeSchema = new mongoose.Schema(
       type: String, // e.g., 'card_error', 'validation_error'
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const PaymentSchema = new mongoose.Schema(
@@ -51,7 +51,7 @@ const PaymentSchema = new mongoose.Schema(
     amountBalance: { type: Number },
     stripe: { type: PaymentStripeSchema, default: undefined },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const AuditSchema = new mongoose.Schema(
@@ -61,7 +61,7 @@ const AuditSchema = new mongoose.Schema(
     by: String,
     meta: mongoose.Schema.Types.Mixed,
   },
-  { _id: false }
+  { _id: false },
 );
 
 const AppointmentSchema = new mongoose.Schema(
@@ -80,6 +80,11 @@ const AppointmentSchema = new mongoose.Schema(
       index: true,
     },
     serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
+    locationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Location",
+      index: true,
+    },
     variantName: String,
     start: Date,
     end: Date,
@@ -105,7 +110,7 @@ const AppointmentSchema = new mongoose.Schema(
     audit: { type: [AuditSchema], default: [] },
     policySnapshot: mongoose.Schema.Types.Mixed,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Performance indexes for common queries
@@ -124,7 +129,7 @@ AppointmentSchema.index(
   {
     expireAfterSeconds: 180, // 3 minutes
     partialFilterExpression: { status: "reserved_unpaid" },
-  }
+  },
 );
 
 export default mongoose.model("Appointment", AppointmentSchema);

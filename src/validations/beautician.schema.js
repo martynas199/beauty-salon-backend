@@ -9,6 +9,7 @@ const workingHoursSchema = z.object({
   end: z
     .string()
     .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:mm)"),
+  locationId: z.string().optional(), // Optional: specific location for these hours
 });
 
 // Custom schedule time slot (no dayOfWeek since it's keyed by date)
@@ -19,13 +20,14 @@ const customScheduleSlotSchema = z.object({
   end: z
     .string()
     .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:mm)"),
+  locationId: z.string().optional(), // Optional: specific location for this slot
 });
 
 // Custom schedule schema - object with date keys (YYYY-MM-DD) mapped to arrays of time slots
 const customScheduleSchema = z
   .record(
     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)"),
-    z.array(customScheduleSlotSchema)
+    z.array(customScheduleSlotSchema),
   )
   .optional();
 
@@ -60,6 +62,7 @@ const baseBeauticianSchema = z.object({
   bio: z.string().max(2000).optional(),
   specialties: z.array(z.string().max(100)).optional(),
   image: imageSchema,
+  locationIds: z.array(z.string()).optional(), // Multi-location support
   workingHours: z.array(workingHoursSchema).optional(),
   customSchedule: customScheduleSchema,
   timeOff: z.array(timeOffSchema).optional(),
