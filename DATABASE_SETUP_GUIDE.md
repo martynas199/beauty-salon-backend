@@ -56,7 +56,7 @@ sudo systemctl start mongod
 Update your `.env` file in the backend directory:
 
 ```env
-MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
+MONGO_URI=<MONGO_URI>
 ```
 
 ## Option 2: MongoDB Atlas (Cloud)
@@ -73,7 +73,7 @@ MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
 ### Configure Backend
 
 ```env
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/beauty_salon_dev?retryWrites=true&w=majority
+MONGO_URI=<MONGO_URI>
 ```
 
 ## Cloning Production Database
@@ -94,16 +94,16 @@ mongodump --uri="YOUR_PRODUCTION_MONGO_URI" --out=./backup --collection=appointm
 
 ```bash
 # Import full database
-mongorestore --uri="mongodb://localhost:27017/beauty_salon_dev" ./backup
+mongorestore --uri="<MONGO_URI>" ./backup
 
 # Import specific database
-mongorestore --uri="mongodb://localhost:27017/beauty_salon_dev" --db=beauty_salon_dev ./backup/production_db_name
+mongorestore --uri="<MONGO_URI>" --db=beauty_salon_dev ./backup/production_db_name
 ```
 
 ### Import to MongoDB Atlas
 
 ```bash
-mongorestore --uri="mongodb+srv://username:password@cluster.mongodb.net/beauty_salon_dev" ./backup
+mongorestore --uri="<MONGO_URI>" ./backup
 ```
 
 ## Seed Sample Locations
@@ -119,7 +119,7 @@ node scripts/seedLocations.js
 
 ```bash
 # Connect to MongoDB
-mongosh mongodb://localhost:27017/beauty_salon_dev
+mongosh <MONGO_URI>
 
 # Insert locations
 db.locations.insertMany([
@@ -171,7 +171,7 @@ db.locations.find().pretty();
 
 ```bash
 # Connect to MongoDB shell
-mongosh mongodb://localhost:27017/beauty_salon_dev
+mongosh <MONGO_URI>
 
 # Get location IDs
 const peterboroughId = db.locations.findOne({name: "Peterborough"})._id;
@@ -291,16 +291,16 @@ mongorestore --uri="..." --nsExclude="database.large_collection" ./backup
 
 ```bash
 # Check database exists
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.getName()"
+mongosh <MONGO_URI> --eval "db.getName()"
 
 # Count documents
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.locations.countDocuments()"
+mongosh <MONGO_URI> --eval "db.locations.countDocuments()"
 
 # View all locations
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.locations.find().pretty()"
+mongosh <MONGO_URI> --eval "db.locations.find().pretty()"
 
 # Check beautician locations
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.beauticians.find({locationIds: {$exists: true}}, {name: 1, locationIds: 1}).pretty()"
+mongosh <MONGO_URI> --eval "db.beauticians.find({locationIds: {$exists: true}}, {name: 1, locationIds: 1}).pretty()"
 ```
 
 ## Data Backup Best Practices
@@ -311,7 +311,7 @@ mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.beauticians.find({
 # Daily backup script
 #!/bin/bash
 DATE=$(date +%Y%m%d)
-mongodump --uri="mongodb://localhost:27017/beauty_salon_dev" --out="./backups/backup_$DATE"
+mongodump --uri="<MONGO_URI>" --out="./backups/backup_$DATE"
 
 # Keep only last 7 days
 find ./backups -name "backup_*" -mtime +7 -exec rm -rf {} \;

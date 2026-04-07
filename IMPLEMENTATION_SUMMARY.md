@@ -125,7 +125,7 @@ mkdir C:\data\db
 mongod --dbpath C:\data\db
 
 # Update .env:
-MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
+MONGO_URI=<MONGO_URI>
 ```
 
 **Option C: Clone Production Data**
@@ -135,7 +135,7 @@ MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
 mongodump --uri="$PROD_MONGO_URI" --out=./backup
 
 # Import to local
-mongorestore --uri="mongodb://localhost:27017/beauty_salon_dev" ./backup
+mongorestore --uri="<MONGO_URI>" ./backup
 ```
 
 ### 2. Test Connection
@@ -348,7 +348,7 @@ node scripts/seedLocations.js
 
 ```bash
 # MongoDB shell
-mongosh mongodb://localhost:27017/beauty_salon_dev
+mongosh <MONGO_URI>
 
 # Get location ID
 const locationId = db.locations.findOne({name: "Peterborough"})._id;
@@ -364,10 +364,10 @@ db.beauticians.updateOne(
 
 ```bash
 # Check locations
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.locations.find().pretty()"
+mongosh <MONGO_URI> --eval "db.locations.find().pretty()"
 
 # Check beautician locations
-mongosh mongodb://localhost:27017/beauty_salon_dev --eval "db.beauticians.find({locationIds: {$exists: true}}, {name: 1, locationIds: 1}).pretty()"
+mongosh <MONGO_URI> --eval "db.beauticians.find({locationIds: {$exists: true}}, {name: 1, locationIds: 1}).pretty()"
 ```
 
 ---

@@ -71,7 +71,7 @@ Copy-Item .env .env.production
 # Create .env.local
 @"
 PORT=4000
-MONGO_URI="mongodb://localhost:27017/beauty-salon-test"
+MONGO_URI="<MONGO_URI>"
 
 # Copy rest of your .env content here (Stripe, Cloudinary, etc.)
 "@ | Out-File -FilePath .env.local -Encoding utf8
@@ -115,7 +115,7 @@ choco install mongodb-database-tools
 ### Step 2: Dump Production Database
 
 ```powershell
-mongodump --uri="mongodb+srv://Admin:AdminPassword@cluster0.tfn2e.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" --out="./backup"
+mongodump --uri="<MONGO_URI>" --out="./backup"
 ```
 
 ### Step 3: Restore to Local MongoDB
@@ -186,7 +186,7 @@ You should see MongoDB shell prompt:
 
 ```
 MongoDB shell version v7.x.x
-connecting to: mongodb://127.0.0.1:27017
+connecting to: <MONGO_URI>
 >
 ```
 
@@ -264,14 +264,14 @@ Get-NetTCPConnection -LocalPort 27017
 
 ```powershell
 # .env
-MONGO_URI="mongodb://localhost:27017/beauty-salon-test"
+MONGO_URI="<MONGO_URI>"
 ```
 
 ### For Production
 
 ```powershell
 # .env
-MONGO_URI="mongodb+srv://Admin:AdminPassword@cluster0.tfn2e.mongodb.net/..."
+MONGO_URI="<MONGO_URI>"
 ```
 
 ## Best Practices
@@ -289,7 +289,7 @@ For easier database management, install one of these:
 ### MongoDB Compass (Official)
 
 - Download: https://www.mongodb.com/try/download/compass
-- Connect to: `mongodb://localhost:27017`
+- Connect to: `<MONGO_URI>`
 
 ### Studio 3T
 

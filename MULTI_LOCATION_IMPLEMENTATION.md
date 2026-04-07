@@ -162,7 +162,7 @@ const newHours = weeklyDayHours.map((h) => ({
 # 1. Create free MongoDB Atlas cluster at mongodb.com
 # 2. Get connection string
 # 3. Update .env
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/beauty_salon
+MONGO_URI=<MONGO_URI>
 ```
 
 #### Option 2: Local MongoDB
@@ -179,7 +179,7 @@ brew install mongodb-community
 mongod --dbpath C:\data\db
 
 # Update .env
-MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
+MONGO_URI=<MONGO_URI>
 ```
 
 #### Database Cloning from Production
@@ -189,7 +189,7 @@ MONGO_URI=mongodb://localhost:27017/beauty_salon_dev
 mongodump --uri="production_MONGO_URI" --out=./backup
 
 # Import to local
-mongorestore --uri="mongodb://localhost:27017/beauty_salon_dev" ./backup
+mongorestore --uri="<MONGO_URI>" ./backup
 
 # Or using Atlas:
 mongorestore --uri="local_MONGO_URI" ./backup
