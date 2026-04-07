@@ -1,6 +1,7 @@
 import { Router } from "express";
 import Location from "../models/Location.js";
 import { requireAdmin, requireSuperAdmin } from "../middleware/requireAdmin.js";
+import optionalAuth from "../middleware/optionalAuth.js";
 import multer from "multer";
 import { uploadImage, deleteImage } from "../utils/cloudinary.js";
 import fs from "fs";
@@ -24,15 +25,13 @@ const deleteLocalFile = (path) => {
  * Public endpoint - list all active locations
  * Query params: all (super admin only)
  */
-r.get("/", async (req, res) => {
+r.get("/", optionalAuth, async (req, res) => {
   try {
-    const query = {};
+    const canViewAll =
+      req.query.all === "true" && req.admin?.role === "super_admin";
+    const query = canViewAll ? {} : { active: true };
 
     // Only super admins can see inactive locations
-    if (req.query.all !== "true") {
-      query.active = true;
-    }
-
     const locations = await Location.find(query)
       .sort({ order: 1, name: 1 })
       .lean();
@@ -67,7 +66,7 @@ r.get("/:id", async (req, res) => {
  * POST /api/locations
  * Create new location (super admin only)
  */
-r.post("/", requireSuperAdmin, async (req, res) => {
+r.post("/", requireAdmin, requireSuperAdmin, async (req, res) => {
   try {
     const location = await Location.create(req.body);
     res.status(201).json(location);
@@ -81,7 +80,7 @@ r.post("/", requireSuperAdmin, async (req, res) => {
  * PATCH /api/locations/:id
  * Update location (super admin only)
  */
-r.patch("/:id", requireSuperAdmin, async (req, res) => {
+r.patch("/:id", requireAdmin, requireSuperAdmin, async (req, res) => {
   try {
     const location = await Location.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
@@ -103,7 +102,7 @@ r.patch("/:id", requireSuperAdmin, async (req, res) => {
  * DELETE /api/locations/:id
  * Delete location (super admin only)
  */
-r.delete("/:id", requireSuperAdmin, async (req, res) => {
+r.delete("/:id", requireAdmin, requireSuperAdmin, async (req, res) => {
   try {
     const location = await Location.findById(req.params.id);
 
@@ -134,6 +133,7 @@ r.delete("/:id", requireSuperAdmin, async (req, res) => {
  */
 r.post(
   "/:id/upload-image",
+  requireAdmin,
   requireSuperAdmin,
   upload.single("image"),
   async (req, res) => {
@@ -193,7 +193,7 @@ r.post(
  * DELETE /api/locations/:id/image
  * Delete location image (super admin only)
  */
-r.delete("/:id/image", requireSuperAdmin, async (req, res) => {
+r.delete("/:id/image", requireAdmin, requireSuperAdmin, async (req, res) => {
   try {
     const location = await Location.findById(req.params.id);
 

@@ -44,6 +44,32 @@ function normalizeBeautician(beautician) {
   return normalized;
 }
 
+function filterBeauticianByLocation(beautician, locationId) {
+  if (!beautician || !locationId) return beautician;
+
+  const customSchedule =
+    beautician.customSchedule instanceof Map
+      ? Object.fromEntries(beautician.customSchedule)
+      : beautician.customSchedule || {};
+
+  return {
+    ...beautician,
+    workingHours: (beautician.workingHours || []).filter(
+      (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+    ),
+    customSchedule: Object.fromEntries(
+      Object.entries(customSchedule)
+        .map(([date, hours]) => [
+          date,
+          hours.filter(
+            (h) => !h.locationId || h.locationId.toString() === locationId,
+          ),
+        ])
+        .filter(([, hours]) => hours.length > 0),
+    ),
+  };
+}
+
 /**
  * GET /api/slots/fully-booked
  * Returns dates that are fully booked (no available slots) for a beautician in a month
@@ -148,16 +174,17 @@ r.get("/fully-booked", async (req, res) => {
       });
     }
 
-    // Normalize beautician once
-    const normalizedBeautician = normalizeBeautician(beautician);
-    const normalizedCustomSchedule =
-      beautician.customSchedule instanceof Map
-        ? Object.fromEntries(beautician.customSchedule)
-        : beautician.customSchedule || {};
+    const filteredBeautician = filterBeauticianByLocation(
+      beautician,
+      locationId,
+    );
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
+    const normalizedCustomSchedule = normalizedBeautician.customSchedule || {};
 
     // Pre-compute service variants
-    const serviceVariants = services.map(service => ({
-      durationMin: service.variants?.[0]?.durationMin || service.durationMin || 60,
+    const serviceVariants = services.map((service) => ({
+      durationMin:
+        service.variants?.[0]?.durationMin || service.durationMin || 60,
       bufferBeforeMin: service.variants?.[0]?.bufferBeforeMin || 0,
       bufferAfterMin: service.variants?.[0]?.bufferAfterMin || 10,
     }));
@@ -179,29 +206,15 @@ r.get("/fully-booked", async (req, res) => {
       // Check if beautician works this day (either regular hours OR custom schedule)
       const dayOfWeek = dateObj.day();
 
-      // Filter custom schedule by locationId if provided
-      let customScheduleForDate = normalizedCustomSchedule[dateStr];
-      if (customScheduleForDate && locationId) {
-        customScheduleForDate = customScheduleForDate.filter(
-          (cs) => !cs.locationId || cs.locationId.toString() === locationId,
-        );
-      }
+      const customScheduleForDate = normalizedCustomSchedule[dateStr];
 
       const hasCustomSchedule =
         Array.isArray(customScheduleForDate) && customScheduleForDate.length > 0;
 
-      // Filter working hours by locationId if provided
-      let workingHoursForDay =
-        beautician.workingHours?.filter((wh) => wh.dayOfWeek === dayOfWeek) ||
-        [];
-
-      if (locationId) {
-        workingHoursForDay = workingHoursForDay.filter(
-          (wh) => !wh.locationId || wh.locationId.toString() === locationId,
-        );
-      }
-
-      const worksThisDay = workingHoursForDay.length > 0;
+      const worksThisDay =
+        filteredBeautician.workingHours?.some(
+          (wh) => wh.dayOfWeek === dayOfWeek,
+        ) || false;
 
       // Skip only if there's no regular working hours AND no custom schedule
       if (!worksThisDay && !hasCustomSchedule) {
@@ -303,37 +316,14 @@ r.get("/", async (req, res) => {
       .select("start end status")
       .lean();
 
-    // Filter working hours by location if specified
-    const filteredBeautician = locationId
-      ? {
-          ...b,
-          workingHours: (b.workingHours || []).filter(
-            (wh) => !wh.locationId || wh.locationId.toString() === locationId,
-          ),
-          // Also filter customSchedule by location
-          customSchedule: Object.fromEntries(
-            Object.entries(
-              b.customSchedule instanceof Map
-                ? Object.fromEntries(b.customSchedule)
-                : b.customSchedule || {},
-            )
-              .map(([date, hours]) => [
-                date,
-                hours.filter(
-                  (h) =>
-                    !h.locationId || h.locationId.toString() === locationId,
-                ),
-              ])
-              .filter(([, hours]) => hours.length > 0), // Remove empty dates
-          ),
-        }
-      : b;
+    const filteredBeautician = filterBeauticianByLocation(b, locationId);
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
     slots = computeSlotsForBeautician({
       date,
       salonTz,
       stepMin,
       service: svc,
-      beautician: normalizeBeautician(filteredBeautician),
+      beautician: normalizedBeautician,
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),
@@ -344,31 +334,7 @@ r.get("/", async (req, res) => {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
 
-    // Filter working hours by location if specified
-    const filteredBeautician = locationId
-      ? {
-          ...b,
-          workingHours: (b.workingHours || []).filter(
-            (wh) => !wh.locationId || wh.locationId.toString() === locationId,
-          ),
-          // Also filter customSchedule by location
-          customSchedule: Object.fromEntries(
-            Object.entries(
-              b.customSchedule instanceof Map
-                ? Object.fromEntries(b.customSchedule)
-                : b.customSchedule || {},
-            )
-              .map(([date, hours]) => [
-                date,
-                hours.filter(
-                  (h) =>
-                    !h.locationId || h.locationId.toString() === locationId,
-                ),
-              ])
-              .filter(([date, hours]) => hours.length > 0), // Remove empty dates
-          ),
-        }
-      : b;
+    const filteredBeautician = filterBeauticianByLocation(b, locationId);
 
     const normalizedBeautician = normalizeBeautician(filteredBeautician);
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import Settings from "../models/Settings.js";
+import Location from "../models/Location.js";
 
 const r = Router();
 
@@ -15,6 +16,7 @@ r.get("/", async (req, res) => {
   const tz = process.env.SALON_TZ || "Europe/London";
   const heroUrl = settings?.heroImage?.url || process.env.SALON_HERO_URL || "";
   const about = settings?.salonDescription || process.env.SALON_ABOUT || "";
+  const multiLocationEnabled = !!settings?.multiLocationEnabled;
 
   // Default hours if no settings exist
   const defaultHours = {
@@ -39,7 +41,26 @@ r.get("/", async (req, res) => {
       : { open: false };
   }
 
-  res.json({ name, phone, email, address, tz, heroUrl, about, hours });
+  let locations = [];
+  if (multiLocationEnabled) {
+    locations = await Location.find({ active: true })
+      .sort({ order: 1, name: 1 })
+      .select("name address contact")
+      .lean();
+  }
+
+  res.json({
+    name,
+    phone,
+    email,
+    address,
+    tz,
+    heroUrl,
+    about,
+    hours,
+    multiLocationEnabled,
+    locations,
+  });
 });
 
 export default r;

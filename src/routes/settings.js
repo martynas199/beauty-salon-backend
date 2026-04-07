@@ -49,6 +49,7 @@ r.patch("/", requireAdmin, async (req, res, next) => {
       salonEmail,
       heroImage,
       christmasThemeEnabled,
+      multiLocationEnabled,
     } = req.body;
 
     // Validate working hours format if provided
@@ -63,6 +64,14 @@ r.patch("/", requireAdmin, async (req, res, next) => {
           }
         }
       }
+    }
+    if (
+      multiLocationEnabled !== undefined &&
+      typeof multiLocationEnabled !== "boolean"
+    ) {
+      return res.status(400).json({
+        error: "multiLocationEnabled must be a boolean",
+      });
     }
 
     let settings = await Settings.findById("salon-settings");
@@ -79,6 +88,7 @@ r.patch("/", requireAdmin, async (req, res, next) => {
         salonEmail,
         heroImage,
         christmasThemeEnabled,
+        multiLocationEnabled,
       });
     } else {
       // Update existing settings
@@ -92,6 +102,8 @@ r.patch("/", requireAdmin, async (req, res, next) => {
       if (heroImage !== undefined) settings.heroImage = heroImage;
       if (christmasThemeEnabled !== undefined)
         settings.christmasThemeEnabled = christmasThemeEnabled;
+      if (multiLocationEnabled !== undefined)
+        settings.multiLocationEnabled = multiLocationEnabled;
 
       await settings.save();
     }

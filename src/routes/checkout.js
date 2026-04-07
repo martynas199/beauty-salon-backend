@@ -313,6 +313,21 @@ r.post("/create-session", async (req, res, next) => {
       }
       if (!beautician)
         return res.status(400).json({ error: "No beautician available" });
+
+      if (locationId) {
+        const beauticianLocations = beautician.locationIds || [];
+        const locationIdStr = locationId.toString();
+        const hasLocation = beauticianLocations.some(
+          (loc) => (loc._id || loc).toString() === locationIdStr,
+        );
+
+        if (!hasLocation) {
+          return res.status(400).json({
+            error: "Beautician is not assigned to the selected location",
+          });
+        }
+      }
+
       const start = new Date(startISO);
       const end = new Date(
         start.getTime() +

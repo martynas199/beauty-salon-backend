@@ -1110,18 +1110,55 @@ r.patch("/:id", async (req, res) => {
       return res.status(404).json({ error: "Appointment not found" });
     }
 
-    // Check if time slot is available for the new time/beautician
-    if (start && beauticianId) {
-      const appointmentStart = new Date(start);
-      const appointmentEnd = end
-        ? new Date(end)
-        : new Date(appointmentStart.getTime() + 60 * 60000); // default 1 hour if no end
+    const requestedStart = start ? new Date(start) : null;
+    const requestedEnd = end ? new Date(end) : null;
 
+    if (requestedStart && Number.isNaN(requestedStart.getTime())) {
+      return res.status(400).json({ error: "Invalid start date/time" });
+    }
+    if (requestedEnd && Number.isNaN(requestedEnd.getTime())) {
+      return res.status(400).json({ error: "Invalid end date/time" });
+    }
+
+    const currentStart = appointment.start ? new Date(appointment.start) : null;
+    const currentEnd = appointment.end ? new Date(appointment.end) : null;
+    const currentDurationMs =
+      currentStart && currentEnd ? currentEnd.getTime() - currentStart.getTime() : NaN;
+
+    const nextStart = requestedStart || currentStart;
+    const nextEnd =
+      requestedEnd ||
+      (requestedStart
+        ? new Date(
+            requestedStart.getTime() +
+              (Number.isFinite(currentDurationMs) && currentDurationMs > 0
+                ? currentDurationMs
+                : 60 * 60000),
+          )
+        : currentEnd);
+
+    if (!nextStart || Number.isNaN(nextStart.getTime())) {
+      return res.status(400).json({ error: "Appointment start is required" });
+    }
+    if (!nextEnd || Number.isNaN(nextEnd.getTime())) {
+      return res.status(400).json({ error: "Appointment end is required" });
+    }
+    if (nextEnd.getTime() <= nextStart.getTime()) {
+      return res.status(400).json({
+        error: "Appointment end time must be after start time",
+      });
+    }
+
+    const nextBeauticianId = beauticianId || appointment.beauticianId;
+    const shouldCheckConflict = !!nextBeauticianId && (start || end || beauticianId);
+
+    // Check if time slot is available for the updated time/beautician
+    if (shouldCheckConflict) {
       const conflict = await Appointment.findOne({
         _id: { $ne: id }, // exclude current appointment
-        beauticianId: beauticianId,
-        start: { $lt: appointmentEnd },
-        end: { $gt: appointmentStart },
+        beauticianId: nextBeauticianId,
+        start: { $lt: nextEnd },
+        end: { $gt: nextStart },
       }).lean();
 
       if (conflict) {
@@ -1136,8 +1173,10 @@ r.patch("/:id", async (req, res) => {
     if (beauticianId) appointment.beauticianId = beauticianId;
     if (serviceId) appointment.serviceId = serviceId;
     if (variantName) appointment.variantName = variantName;
-    if (start) appointment.start = new Date(start);
-    if (end) appointment.end = new Date(end);
+    if (start || end) {
+      appointment.start = nextStart;
+      appointment.end = nextEnd;
+    }
     if (price !== undefined) appointment.price = price;
 
     await appointment.save();

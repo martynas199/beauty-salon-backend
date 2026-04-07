@@ -87,6 +87,10 @@ export const listBeauticiansQuerySchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{24}$/)
     .optional(),
+  locationId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{24}$/)
+    .optional(),
   limit: z.string().regex(/^\d+$/).transform(Number).optional(),
   skip: z.string().regex(/^\d+$/).transform(Number).optional(),
 });

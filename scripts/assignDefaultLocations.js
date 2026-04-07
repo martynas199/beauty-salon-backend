@@ -19,6 +19,7 @@ import Location from "../src/models/Location.js";
 dotenv.config();
 
 const MONGODB_URI =
+  process.env.MONGO_URI ||
   process.env.MONGODB_URI || "mongodb://localhost:27017/beauty-salon";
 
 async function assignDefaultLocations(defaultLocationId = null) {
