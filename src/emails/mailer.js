@@ -1638,6 +1638,8 @@ export async function sendDepositPaymentEmail({
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
+  const appointmentLocation = await resolveAppointmentLocation(appointment);
+  const locationDisplay = formatLocationDisplay(appointmentLocation);
 
   // Use passed parameters if available, otherwise fall back to appointment data
   const depositAmount =
@@ -1669,6 +1671,7 @@ export async function sendDepositPaymentEmail({
 Hi ${appointment.client?.name || "there"},
 
 Your appointment for ${serviceName} on ${startTime} has been confirmed with ${beauticianName}.
+${locationDisplay ? `Location: ${locationDisplay}` : ""}
 
 A deposit is required to secure your appointment slot.
 
@@ -1733,6 +1736,11 @@ Noble Elegance Team
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
                 <strong>Date & Time:</strong> ${startTime}
               </p>
+              ${
+                locationDisplay
+                  ? `<p style="margin: 5px 0; color: #4b5563; font-size: 14px;"><strong>Location:</strong> ${locationDisplay}</p>`
+                  : ""
+              }
             </div>
 
             <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0;">
@@ -1851,6 +1859,8 @@ export async function sendRemainingBalanceEmail({
     appointment.variantName ? ` - ${appointment.variantName}` : ""
   }`;
   const beauticianName = beautician.name || "your beautician";
+  const appointmentLocation = await resolveAppointmentLocation(appointment);
+  const locationDisplay = formatLocationDisplay(appointmentLocation);
   const startTime = new Date(appointment.start).toLocaleString("en-GB", {
     weekday: "long",
     year: "numeric",
@@ -1866,6 +1876,7 @@ export async function sendRemainingBalanceEmail({
 Hi ${appointment.client?.name || "there"},
 
 Your appointment for ${serviceName} on ${startTime} with ${beauticianName} is coming up!
+${locationDisplay ? `Location: ${locationDisplay}` : ""}
 
 You previously paid a deposit for this appointment. The remaining balance is now due.
 
@@ -1916,6 +1927,11 @@ Noble Elegance Team
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
                 <strong>Date & Time:</strong> ${startTime}
               </p>
+              ${
+                locationDisplay
+                  ? `<p style="margin: 5px 0; color: #4b5563; font-size: 14px;"><strong>Location:</strong> ${locationDisplay}</p>`
+                  : ""
+              }
             </div>
 
             <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0;">
@@ -2023,6 +2039,8 @@ export async function sendBookingFeeEmail({
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
+  const appointmentLocation = await resolveAppointmentLocation(appointment);
+  const locationDisplay = formatLocationDisplay(appointmentLocation);
   const servicePrice = appointment.price
     ? appointment.price.toFixed(2)
     : "0.00";
@@ -2031,6 +2049,7 @@ export async function sendBookingFeeEmail({
 Hi ${appointment.client?.name || "there"},
 
 Your appointment has been created for ${serviceName} on ${startTime} with ${beauticianName}.
+${locationDisplay ? `Location: ${locationDisplay}` : ""}
 
 A £${bookingFeeAmount.toFixed(
     2
@@ -2088,6 +2107,11 @@ Noble Elegance Team
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
                 <strong>Date & Time:</strong> ${startTime}
               </p>
+              ${
+                locationDisplay
+                  ? `<p style="margin: 5px 0; color: #4b5563; font-size: 14px;"><strong>Location:</strong> ${locationDisplay}</p>`
+                  : ""
+              }
               <p style="margin: 5px 0; color: #4b5563; font-size: 14px;">
                 <strong>Service Price:</strong> £${servicePrice} <span style="color: #6b7280; font-size: 12px;">(payable at salon)</span>
               </p>

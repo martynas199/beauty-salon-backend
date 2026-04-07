@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import nodemailer from "nodemailer";
 import Location from "../src/models/Location.js";
-import { sendConfirmationEmail } from "../src/emails/mailer.js";
+import {
+  sendBookingFeeEmail,
+  sendConfirmationEmail,
+  sendDepositPaymentEmail,
+} from "../src/emails/mailer.js";
 
 const ENV_KEYS = [
   "SMTP_HOST",
@@ -264,5 +268,127 @@ describe("Mailer: sendConfirmationEmail", () => {
     assert.ok(beauticianMail.text.includes(`Location: ${expectedLocation}`));
     assert.ok(customerMail.html.includes(`<strong>Location:</strong> ${expectedLocation}`));
     assert.ok(beauticianMail.html.includes(`<strong>Location:</strong> ${expectedLocation}`));
+  });
+
+  it("includes location with full address in deposit payment email", async () => {
+    Location.findById = () => {
+      throw new Error(
+        "Location.findById should not be called when location object is populated",
+      );
+    };
+
+    const appointment = {
+      _id: "appt-deposit-1",
+      start: "2026-05-11T14:00:00.000Z",
+      variantName: "Hydra Facial",
+      price: 90,
+      locationId: {
+        name: "Peterborough",
+        address: {
+          street: "1 Bridge Street",
+          city: "Peterborough",
+          postcode: "PE1 1AA",
+          country: "United Kingdom",
+        },
+      },
+      payment: {
+        checkoutUrl: "https://checkout.example.com/deposit",
+      },
+      client: {
+        name: "Alice Client",
+        email: "alice@example.com",
+      },
+    };
+
+    const service = { name: "Hydra Facial" };
+    const beautician = { name: "Justina" };
+    const expectedLocation =
+      "Peterborough (1 Bridge Street, Peterborough, PE1 1AA, United Kingdom)";
+
+    await sendDepositPaymentEmail({
+      appointment,
+      service,
+      beautician,
+      depositAmount: 45,
+      platformFee: 0.5,
+      totalAmount: 45.5,
+      remainingBalance: 45,
+      hasNoFeeSubscription: false,
+    });
+
+    assert.equal(sentMails.length, 1, "expected one customer deposit email");
+    const customerMail = sentMails[0];
+
+    assert.equal(customerMail.to, appointment.client.email);
+    assert.ok(customerMail.text.includes(`Location: ${expectedLocation}`));
+    assert.ok(
+      customerMail.html.includes(
+        `<strong>Location:</strong> ${expectedLocation}`,
+      ),
+    );
+  });
+
+  it("includes location with full address in booking fee email", async () => {
+    const locationId = "loc-booking-fee-1";
+    const locationDoc = {
+      name: "Wisbeach",
+      address: {
+        street: "10 High Street",
+        city: "Wisbeach",
+        postcode: "PE13 1AB",
+        country: "United Kingdom",
+      },
+    };
+
+    let findByIdCalls = 0;
+    Location.findById = (value) => {
+      findByIdCalls += 1;
+      assert.equal(value, locationId);
+      return {
+        select: (fields) => {
+          assert.equal(fields, "name address");
+          return {
+            lean: async () => locationDoc,
+          };
+        },
+      };
+    };
+
+    const appointment = {
+      _id: "appt-booking-fee-1",
+      start: "2026-05-12T10:00:00.000Z",
+      variantName: "Brow Lamination",
+      price: 75,
+      locationId,
+      client: {
+        name: "Maria Smith",
+        email: "maria@example.com",
+      },
+    };
+
+    const service = { name: "Brow Lamination" };
+    const beautician = { name: "Justina" };
+    const expectedLocation =
+      "Wisbeach (10 High Street, Wisbeach, PE13 1AB, United Kingdom)";
+
+    await sendBookingFeeEmail({
+      appointment,
+      service,
+      beautician,
+      bookingFeeAmount: 1,
+      checkoutUrl: "https://checkout.example.com/booking-fee",
+    });
+
+    assert.equal(findByIdCalls, 1, "location should be resolved from database");
+    assert.equal(sentMails.length, 1, "expected one customer booking fee email");
+    const customerMail = sentMails[0];
+
+    assert.equal(customerMail.to, appointment.client.email);
+    assert.ok(customerMail.text.includes(`Location: ${expectedLocation}`));
+    assert.ok(
+      customerMail.html.includes(
+        `<strong>Location:</strong> ${expectedLocation}`,
+      ),
+    );
   });
 });
