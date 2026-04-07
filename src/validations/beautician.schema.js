@@ -10,6 +10,9 @@ const workingHoursSchema = z.object({
     .string()
     .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:mm)"),
   locationId: z.string().optional(), // Optional: specific location for these hours
+}).refine((value) => value.start < value.end, {
+  message: "Start time must be before end time",
+  path: ["end"],
 });
 
 // Custom schedule time slot (no dayOfWeek since it's keyed by date)
@@ -21,6 +24,9 @@ const customScheduleSlotSchema = z.object({
     .string()
     .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:mm)"),
   locationId: z.string().optional(), // Optional: specific location for this slot
+}).refine((value) => value.start < value.end, {
+  message: "Start time must be before end time",
+  path: ["end"],
 });
 
 // Custom schedule schema - object with date keys (YYYY-MM-DD) mapped to arrays of time slots

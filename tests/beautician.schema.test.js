@@ -103,6 +103,43 @@ describe("Beautician Schema Validation", () => {
       assert.equal(result.success, false);
     });
 
+    it("should fail when working hours end time is before start time", () => {
+      const invalidBeautician = {
+        name: "Jane Doe",
+        workingHours: [
+          {
+            dayOfWeek: 1,
+            start: "17:00",
+            end: "09:00",
+          },
+        ],
+      };
+
+      const result = validateCreateBeautician(invalidBeautician);
+      assert.equal(result.success, false);
+      assert.ok(result.errors.some((e) => e.path === "workingHours.0.end"));
+    });
+
+    it("should fail when custom schedule slot end time is before start time", () => {
+      const invalidBeautician = {
+        name: "Jane Doe",
+        customSchedule: {
+          "2026-04-25": [
+            {
+              start: "12:00",
+              end: "11:00",
+            },
+          ],
+        },
+      };
+
+      const result = validateCreateBeautician(invalidBeautician);
+      assert.equal(result.success, false);
+      assert.ok(
+        result.errors.some((e) => e.path === "customSchedule.2026-04-25.0.end"),
+      );
+    });
+
     it("should validate beautician with time off", () => {
       const validBeautician = {
         name: "Jane Doe",

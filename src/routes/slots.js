@@ -46,6 +46,7 @@ function normalizeBeautician(beautician) {
 
 function filterBeauticianByLocation(beautician, locationId) {
   if (!beautician || !locationId) return beautician;
+  const normalizedLocationId = String(locationId);
 
   const customSchedule =
     beautician.customSchedule instanceof Map
@@ -55,17 +56,16 @@ function filterBeauticianByLocation(beautician, locationId) {
   return {
     ...beautician,
     workingHours: (beautician.workingHours || []).filter(
-      (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+      (wh) => wh.locationId && wh.locationId.toString() === normalizedLocationId,
     ),
     customSchedule: Object.fromEntries(
       Object.entries(customSchedule)
         .map(([date, hours]) => [
           date,
           hours.filter(
-            (h) => !h.locationId || h.locationId.toString() === locationId,
+            (h) => h.locationId && h.locationId.toString() === normalizedLocationId,
           ),
-        ])
-        .filter(([, hours]) => hours.length > 0),
+        ]),
     ),
   };
 }

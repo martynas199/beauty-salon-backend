@@ -15,6 +15,16 @@ import { uploadImage, deleteImage } from "../utils/cloudinary.js";
 import fs from "fs";
 
 const r = Router();
+const MIN_TRAVEL_BUFFER_MINUTES = 45;
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 // Multer setup: Temporary file storage
 const upload = multer({ dest: "uploads/" });
@@ -27,6 +37,132 @@ const deleteLocalFile = (path) => {
     console.error("Error deleting local file:", err);
   }
 };
+
+const toLocationKey = (locationId) =>
+  locationId ? String(locationId) : "__default__";
+
+const hhmmToMinutes = (value) => {
+  if (typeof value !== "string") return NaN;
+  const [hours, minutes] = value.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return NaN;
+  }
+  return hours * 60 + minutes;
+};
+
+const formatSlotRange = (slot) => `${slot.start}-${slot.end}`;
+
+function validateScheduleEntriesForSingleDay(entries, contextLabel) {
+  const normalized = (entries || []).map((entry) => {
+    const startMin = hhmmToMinutes(entry.start);
+    const endMin = hhmmToMinutes(entry.end);
+    return {
+      ...entry,
+      startMin,
+      endMin,
+      locationKey: toLocationKey(entry.locationId),
+    };
+  });
+
+  const invalidSlot = normalized.find(
+    (slot) =>
+      !Number.isFinite(slot.startMin) ||
+      !Number.isFinite(slot.endMin) ||
+      slot.startMin >= slot.endMin,
+  );
+  if (invalidSlot) {
+    return `${contextLabel}: invalid time range ${formatSlotRange(invalidSlot)}.`;
+  }
+
+  const byLocation = new Map();
+  for (const slot of normalized) {
+    if (!byLocation.has(slot.locationKey)) {
+      byLocation.set(slot.locationKey, []);
+    }
+    byLocation.get(slot.locationKey).push(slot);
+  }
+
+  for (const slots of byLocation.values()) {
+    const sorted = [...slots].sort((a, b) => a.startMin - b.startMin);
+    for (let i = 1; i < sorted.length; i += 1) {
+      const prev = sorted[i - 1];
+      const current = sorted[i];
+      if (current.startMin < prev.endMin) {
+        return `${contextLabel}: overlapping time slots ${formatSlotRange(prev)} and ${formatSlotRange(current)} for the same location.`;
+      }
+    }
+  }
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    for (let j = i + 1; j < normalized.length; j += 1) {
+      const a = normalized[i];
+      const b = normalized[j];
+
+      if (
+        !a.locationId ||
+        !b.locationId ||
+        String(a.locationId) === String(b.locationId)
+      ) {
+        continue;
+      }
+
+      const overlaps = a.startMin < b.endMin && b.startMin < a.endMin;
+      if (overlaps) {
+        return `${contextLabel}: ${formatSlotRange(a)} overlaps ${formatSlotRange(b)} across locations.`;
+      }
+
+      const gapMin =
+        a.endMin <= b.startMin ? b.startMin - a.endMin : a.startMin - b.endMin;
+
+      if (gapMin < MIN_TRAVEL_BUFFER_MINUTES) {
+        return `${contextLabel}: not enough travel time between ${formatSlotRange(a)} and ${formatSlotRange(b)} across locations. Minimum gap is ${MIN_TRAVEL_BUFFER_MINUTES} minutes.`;
+      }
+    }
+  }
+
+  return null;
+}
+
+function validateWorkingHoursConflicts(workingHours = []) {
+  const byDay = new Map();
+
+  for (const entry of workingHours) {
+    const dayOfWeek = Number(entry.dayOfWeek);
+    if (!byDay.has(dayOfWeek)) {
+      byDay.set(dayOfWeek, []);
+    }
+    byDay.get(dayOfWeek).push(entry);
+  }
+
+  for (const [dayOfWeek, entries] of byDay.entries()) {
+    const dayName = DAY_NAMES[dayOfWeek] || `Day ${dayOfWeek}`;
+    const error = validateScheduleEntriesForSingleDay(
+      entries,
+      `Working hours (${dayName})`,
+    );
+    if (error) return error;
+  }
+
+  return null;
+}
+
+function validateCustomScheduleConflicts(customSchedule = {}) {
+  const scheduleEntries =
+    customSchedule instanceof Map
+      ? Object.fromEntries(customSchedule)
+      : customSchedule || {};
+
+  for (const [date, entries] of Object.entries(scheduleEntries)) {
+    if (!Array.isArray(entries) || entries.length === 0) continue;
+    const error = validateScheduleEntriesForSingleDay(
+      entries,
+      `Custom schedule (${date})`,
+    );
+    if (error) return error;
+  }
+
+  return null;
+}
 
 /**
  * GET /api/beauticians
@@ -189,8 +325,24 @@ r.patch("/me/working-hours", async (req, res, next) => {
       return res.status(400).json({ error: "workingHours must be an array" });
     }
 
+    const validation = validateUpdateBeautician({ workingHours });
+    if (!validation.success) {
+      const errorMessages = validation.errors.map((e) => e.message).join(", ");
+      return res.status(400).json({
+        error: errorMessages || "Validation failed",
+        details: validation.errors,
+      });
+    }
+
+    const workingHoursConflictError = validateWorkingHoursConflicts(
+      validation.data.workingHours || [],
+    );
+    if (workingHoursConflictError) {
+      return res.status(400).json({ error: workingHoursConflictError });
+    }
+
     // Update working hours
-    beautician.workingHours = workingHours;
+    beautician.workingHours = validation.data.workingHours;
     await beautician.save();
 
     console.log("[Working Hours] Successfully updated working hours");
@@ -249,6 +401,20 @@ r.post("/", requireAdmin, async (req, res, next) => {
       });
     }
 
+    const workingHoursConflictError = validateWorkingHoursConflicts(
+      validation.data.workingHours || [],
+    );
+    if (workingHoursConflictError) {
+      return res.status(400).json({ error: workingHoursConflictError });
+    }
+
+    const customScheduleConflictError = validateCustomScheduleConflicts(
+      validation.data.customSchedule || {},
+    );
+    if (customScheduleConflictError) {
+      return res.status(400).json({ error: customScheduleConflictError });
+    }
+
     const created = await Beautician.create(validation.data);
     res.status(201).json(created);
   } catch (err) {
@@ -285,6 +451,24 @@ r.patch("/:id", requireAdmin, async (req, res, next) => {
         error: errorMessages || "Validation failed",
         details: validation.errors,
       });
+    }
+
+    if (validation.data.workingHours) {
+      const workingHoursConflictError = validateWorkingHoursConflicts(
+        validation.data.workingHours,
+      );
+      if (workingHoursConflictError) {
+        return res.status(400).json({ error: workingHoursConflictError });
+      }
+    }
+
+    if (validation.data.customSchedule) {
+      const customScheduleConflictError = validateCustomScheduleConflicts(
+        validation.data.customSchedule,
+      );
+      if (customScheduleConflictError) {
+        return res.status(400).json({ error: customScheduleConflictError });
+      }
     }
 
     const updated = await Beautician.findByIdAndUpdate(
