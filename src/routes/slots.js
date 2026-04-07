@@ -16,9 +16,9 @@ dayjs.extend(timezone);
 
 const r = Router();
 
-// Cache for fully-booked endpoint (60 seconds TTL)
+// Cache for fully-booked endpoint (5 minutes TTL)
 const fullyBookedCache = new Map();
-const CACHE_TTL = 60000;
+const CACHE_TTL = 300000; // 5 minutes instead of 60 seconds
 
 /**
  * Normalize beautician object for slot computation
@@ -44,13 +44,39 @@ function normalizeBeautician(beautician) {
   return normalized;
 }
 
+function filterBeauticianByLocation(beautician, locationId) {
+  if (!beautician || !locationId) return beautician;
+
+  const customSchedule =
+    beautician.customSchedule instanceof Map
+      ? Object.fromEntries(beautician.customSchedule)
+      : beautician.customSchedule || {};
+
+  return {
+    ...beautician,
+    workingHours: (beautician.workingHours || []).filter(
+      (wh) => !wh.locationId || wh.locationId.toString() === locationId,
+    ),
+    customSchedule: Object.fromEntries(
+      Object.entries(customSchedule)
+        .map(([date, hours]) => [
+          date,
+          hours.filter(
+            (h) => !h.locationId || h.locationId.toString() === locationId,
+          ),
+        ])
+        .filter(([, hours]) => hours.length > 0),
+    ),
+  };
+}
+
 /**
  * GET /api/slots/fully-booked
  * Returns dates that are fully booked (no available slots) for a beautician in a month
  */
 r.get("/fully-booked", async (req, res) => {
   try {
-    const { beauticianId, year, month } = req.query;
+    const { beauticianId, year, month, locationId } = req.query;
 
     // Validation
     if (!beauticianId || !year || !month) {
@@ -66,11 +92,11 @@ r.get("/fully-booked", async (req, res) => {
       return res.status(400).json({ error: "Invalid year or month" });
     }
 
-    // Check cache
+    // Check cache (include locationId in cache key)
     const cacheKey = `${beauticianId}:${year}-${String(monthNum).padStart(
       2,
-      "0"
-    )}`;
+      "0",
+    )}:${locationId || "all"}`;
     const cached = fullyBookedCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return res.json({ fullyBooked: cached.data });
@@ -96,14 +122,14 @@ r.get("/fully-booked", async (req, res) => {
     if (services.length === 0) {
       // No services = all days fully booked
       const daysInMonth = dayjs(
-        `${year}-${String(monthNum).padStart(2, "0")}-01`
+        `${year}-${String(monthNum).padStart(2, "0")}-01`,
       ).daysInMonth();
       const allDates = Array.from(
         { length: daysInMonth },
         (_, i) =>
           `${year}-${String(monthNum).padStart(2, "0")}-${String(
-            i + 1
-          ).padStart(2, "0")}`
+            i + 1,
+          ).padStart(2, "0")}`,
       );
       fullyBookedCache.set(cacheKey, { data: allDates, timestamp: Date.now() });
       return res.json({ fullyBooked: allDates });
@@ -119,11 +145,55 @@ r.get("/fully-booked", async (req, res) => {
     const monthEnd = monthStart.endOf("month");
     const today = dayjs().tz(salonTz).startOf("day");
 
+    // PERFORMANCE: Fetch ALL appointments for the month in ONE query instead of per-day
+    const monthStartDate = monthStart.toDate();
+    const monthEndDate = monthEnd.toDate();
+    const monthAppointmentQuery = {
+      beauticianId,
+      start: { $gte: monthStartDate, $lt: monthEndDate },
+      status: { $ne: "cancelled" },
+    };
+    if (locationId) {
+      monthAppointmentQuery.locationId = locationId;
+    }
+    const allMonthAppointments = await Appointment.find(monthAppointmentQuery)
+      .select("start end status") // Only fetch needed fields
+      .lean();
+
+    // Index appointments by date for fast lookup
+    const appointmentsByDate = {};
+    for (const appt of allMonthAppointments) {
+      const dateKey = dayjs(appt.start).tz(salonTz).format("YYYY-MM-DD");
+      if (!appointmentsByDate[dateKey]) {
+        appointmentsByDate[dateKey] = [];
+      }
+      appointmentsByDate[dateKey].push({
+        start: new Date(appt.start).toISOString(),
+        end: new Date(appt.end).toISOString(),
+        status: appt.status,
+      });
+    }
+
+    const filteredBeautician = filterBeauticianByLocation(
+      beautician,
+      locationId,
+    );
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
+    const normalizedCustomSchedule = normalizedBeautician.customSchedule || {};
+
+    // Pre-compute service variants
+    const serviceVariants = services.map((service) => ({
+      durationMin:
+        service.variants?.[0]?.durationMin || service.durationMin || 60,
+      bufferBeforeMin: service.variants?.[0]?.bufferBeforeMin || 0,
+      bufferAfterMin: service.variants?.[0]?.bufferAfterMin || 10,
+    }));
+
     // Check each day in the month
     const daysInMonth = monthStart.daysInMonth();
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(monthNum).padStart(2, "0")}-${String(
-        day
+        day,
       ).padStart(2, "0")}`;
       const dateObj = dayjs.tz(dateStr, salonTz);
 
@@ -135,20 +205,16 @@ r.get("/fully-booked", async (req, res) => {
 
       // Check if beautician works this day (either regular hours OR custom schedule)
       const dayOfWeek = dateObj.day();
-      
-      // Normalize custom schedule (convert Map to object if needed)
-      const normalizedCustomSchedule =
-        beautician.customSchedule instanceof Map
-          ? Object.fromEntries(beautician.customSchedule)
-          : beautician.customSchedule || {};
-      
-      const hasCustomSchedule = normalizedCustomSchedule[dateStr] && 
-        Array.isArray(normalizedCustomSchedule[dateStr]) &&
-        normalizedCustomSchedule[dateStr].length > 0;
-      
-      const worksThisDay = beautician.workingHours?.some(
-        (wh) => wh.dayOfWeek === dayOfWeek
-      );
+
+      const customScheduleForDate = normalizedCustomSchedule[dateStr];
+
+      const hasCustomSchedule =
+        Array.isArray(customScheduleForDate) && customScheduleForDate.length > 0;
+
+      const worksThisDay =
+        filteredBeautician.workingHours?.some(
+          (wh) => wh.dayOfWeek === dayOfWeek,
+        ) || false;
 
       // Skip only if there's no regular working hours AND no custom schedule
       if (!worksThisDay && !hasCustomSchedule) {
@@ -156,40 +222,21 @@ r.get("/fully-booked", async (req, res) => {
         continue;
       }
 
+      // Get appointments for this day from indexed map
+      const dayAppointments = appointmentsByDate[dateStr] || [];
+
       // Check if any service has available slots
       let hasAvailableSlots = false;
 
-      for (const service of services) {
+      for (const variant of serviceVariants) {
         try {
-          const variant = service.variants?.[0] || {
-            durationMin: service.durationMin || 60,
-            bufferBeforeMin: 0,
-            bufferAfterMin: 10,
-          };
-
-          const dayStart = dateObj.toDate();
-          const dayEnd = dateObj.add(1, "day").toDate();
-          const appts = await Appointment.find({
-            beauticianId,
-            start: { $gte: dayStart, $lt: dayEnd },
-            status: { $ne: "cancelled" },
-          }).lean();
-
           const slots = computeSlotsForBeautician({
             date: dateStr,
             salonTz,
             stepMin: 15,
-            service: {
-              durationMin: variant.durationMin,
-              bufferBeforeMin: variant.bufferBeforeMin || 0,
-              bufferAfterMin: variant.bufferAfterMin || 0,
-            },
-            beautician: normalizeBeautician(beautician),
-            appointments: appts.map((a) => ({
-              start: new Date(a.start).toISOString(),
-              end: new Date(a.end).toISOString(),
-              status: a.status,
-            })),
+            service: variant,
+            beautician: normalizedBeautician,
+            appointments: dayAppointments,
           });
 
           if (slots.length > 0) {
@@ -222,13 +269,19 @@ r.get("/fully-booked", async (req, res) => {
 });
 
 r.get("/", async (req, res) => {
-  const { beauticianId, serviceId, variantName, date, any } = req.query;
+  const { beauticianId, serviceId, variantName, date, any, locationId } =
+    req.query;
   if (!serviceId || !variantName || !date)
     return res.status(400).json({ error: "Missing params" });
-  const service = await Service.findById(serviceId).lean();
+  
+  const service = await Service.findById(serviceId)
+    .select("beauticianId beauticianIds variants")
+    .lean();
   if (!service) return res.status(404).json({ error: "Service not found" });
+  
   const variant = (service.variants || []).find((v) => v.name === variantName);
   if (!variant) return res.status(404).json({ error: "Variant not found" });
+  
   const svc = {
     durationMin: variant.durationMin,
     bufferBeforeMin: variant.bufferBeforeMin || 0,
@@ -237,6 +290,7 @@ r.get("/", async (req, res) => {
   const salonTz = process.env.SALON_TZ || "Europe/London";
   const stepMin = Number(process.env.SLOTS_STEP_MIN || 15);
   let slots = [];
+  
   if (any === "true") {
     // Single-beautician per service: resolve assigned beautician and compute directly
     const targetId = service.beauticianId || (service.beauticianIds || [])[0];
@@ -244,21 +298,32 @@ r.get("/", async (req, res) => {
       return res
         .status(400)
         .json({ error: "Service has no assigned beautician" });
+    
     const b = await Beautician.findById(targetId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
+    
     const dayStart = new Date(date);
     const dayEnd = new Date(new Date(date).getTime() + 86400000);
-    const appts = await Appointment.find({
+    const appointmentQuery = {
       beauticianId: targetId,
       start: { $gte: dayStart, $lt: dayEnd },
       status: { $ne: "cancelled" },
-    }).lean();
+    };
+    if (locationId) {
+      appointmentQuery.locationId = locationId;
+    }
+    const appts = await Appointment.find(appointmentQuery)
+      .select("start end status")
+      .lean();
+
+    const filteredBeautician = filterBeauticianByLocation(b, locationId);
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
     slots = computeSlotsForBeautician({
       date,
       salonTz,
       stepMin,
       service: svc,
-      beautician: normalizeBeautician(b),
+      beautician: normalizedBeautician,
       appointments: appts.map((a) => ({
         start: new Date(a.start).toISOString(),
         end: new Date(a.end).toISOString(),
@@ -269,16 +334,24 @@ r.get("/", async (req, res) => {
     const b = await Beautician.findById(beauticianId).lean();
     if (!b) return res.status(404).json({ error: "Beautician not found" });
 
-    const normalizedBeautician = normalizeBeautician(b);
+    const filteredBeautician = filterBeauticianByLocation(b, locationId);
 
-    const appts = await Appointment.find({
+    const normalizedBeautician = normalizeBeautician(filteredBeautician);
+
+    const appointmentQuery = {
       beauticianId,
       start: {
         $gte: new Date(date),
         $lt: new Date(new Date(date).getTime() + 86400000),
       },
       status: { $ne: "cancelled" },
-    }).lean();
+    };
+    if (locationId) {
+      appointmentQuery.locationId = locationId;
+    }
+    const appts = await Appointment.find(appointmentQuery)
+      .select("start end status")
+      .lean();
 
     slots = computeSlotsForBeautician({
       date,

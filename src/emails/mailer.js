@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import Location from "../models/Location.js";
 
 /**
  * Format currency based on the currency code
@@ -17,6 +18,50 @@ function formatCurrency(amount, currency = "GBP") {
 
   const symbol = symbols[currencyUpper] || currencyUpper + " ";
   return `${symbol}${amount.toFixed(2)}`;
+}
+
+function formatLocationDisplay(location) {
+  if (!location) return "";
+
+  const name = location.name || "";
+  const address = location.address || {};
+  const addressLine = [
+    address.street,
+    address.city,
+    address.postcode,
+    address.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  if (name && addressLine) return `${name} (${addressLine})`;
+  return name || addressLine || "";
+}
+
+async function resolveAppointmentLocation(appointment) {
+  const rawLocation = appointment?.locationId;
+  if (!rawLocation) return null;
+
+  if (
+    typeof rawLocation === "object" &&
+    (rawLocation.name || rawLocation.address)
+  ) {
+    return rawLocation;
+  }
+
+  const locationId =
+    typeof rawLocation === "object"
+      ? rawLocation._id || rawLocation.id
+      : rawLocation;
+
+  if (!locationId) return null;
+
+  try {
+    return await Location.findById(locationId).select("name address").lean();
+  } catch (error) {
+    console.error("[MAILER] Failed to resolve location:", error.message);
+    return null;
+  }
 }
 
 function getTransport() {
@@ -284,6 +329,8 @@ export async function sendConfirmationEmail({
 
   const serviceName = service?.name || appointment.variantName || "Service";
   const beauticianName = beautician?.name || "Our team";
+  const appointmentLocation = await resolveAppointmentLocation(appointment);
+  const locationDisplay = formatLocationDisplay(appointmentLocation);
   const currency = appointment.currency || "GBP";
   const price = appointment.price
     ? formatCurrency(appointment.price, currency)
@@ -364,6 +411,7 @@ Your appointment has been confirmed!
 Service: ${serviceName}
 With: ${beauticianName}
 Date & Time: ${startTime}
+${locationDisplay ? `Location: ${locationDisplay}\n` : ""}
 Price: ${price}
 ${
   isDepositPayment
@@ -401,6 +449,11 @@ Thank you for choosing us!`,
           <p style="margin: 8px 0;"><strong>Service:</strong> ${serviceName}</p>
           <p style="margin: 8px 0;"><strong>With:</strong> ${beauticianName}</p>
           <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startTime}</p>
+          ${
+            locationDisplay
+              ? `<p style="margin: 8px 0;"><strong>Location:</strong> ${locationDisplay}</p>`
+              : ""
+          }
           <p style="margin: 8px 0;"><strong>Price:</strong> ${price}</p>
           ${
             isDepositPayment
@@ -479,6 +532,7 @@ You have a new booking!
 Service: ${serviceName}
 Client: ${appointment.client?.name || "Unknown"}
 Date & Time: ${startTime}
+${locationDisplay ? `Location: ${locationDisplay}\n` : ""}
 Price: ${price}
 ${
   isDepositPayment
@@ -521,6 +575,11 @@ Please ensure you're prepared for this appointment.`;
             appointment.client?.name || "Unknown"
           }</p>
           <p style="margin: 8px 0;"><strong>Date & Time:</strong> ${startTime}</p>
+          ${
+            locationDisplay
+              ? `<p style="margin: 8px 0;"><strong>Location:</strong> ${locationDisplay}</p>`
+              : ""
+          }
           <p style="margin: 8px 0;"><strong>Price:</strong> ${price}</p>
           ${
             isDepositPayment

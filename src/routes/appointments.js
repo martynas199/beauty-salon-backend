@@ -35,6 +35,7 @@ r.get("/", async (req, res) => {
         .limit(limit)
         .populate({ path: "serviceId", select: "name" })
         .populate({ path: "beauticianId", select: "name" })
+        .populate({ path: "locationId", select: "name address" })
         .lean();
 
       const rows = list.map((a) => ({
@@ -68,6 +69,7 @@ r.get("/", async (req, res) => {
         .sort({ start: -1 })
         .populate({ path: "serviceId", select: "name" })
         .populate({ path: "beauticianId", select: "name" })
+        .populate({ path: "locationId", select: "name address" })
         .lean();
 
       const rows = list.map((a) => ({
@@ -111,6 +113,7 @@ r.post("/", async (req, res) => {
     client,
     mode,
     userId,
+    locationId,
   } = req.body;
 
   console.log("[APPOINTMENT] Creating new appointment with:", {
@@ -139,6 +142,20 @@ r.post("/", async (req, res) => {
   if (!beautician)
     return res.status(400).json({ error: "No beautician available" });
 
+  // Validate that locationId is in beautician's locationIds array
+  if (locationId) {
+    const beauticianLocations = beautician.locationIds || [];
+    const locationIdStr = locationId.toString();
+    const hasLocation = beauticianLocations.some(
+      (loc) => (loc._id || loc).toString() === locationIdStr,
+    );
+    if (!hasLocation) {
+      return res.status(400).json({
+        error: "Beautician is not assigned to the selected location",
+      });
+    }
+  }
+
   console.log("[APPOINTMENT] Beautician:", {
     id: beautician._id.toString(),
     name: beautician.name,
@@ -161,7 +178,7 @@ r.post("/", async (req, res) => {
       (variant.durationMin +
         (variant.bufferBeforeMin || 0) +
         (variant.bufferAfterMin || 0)) *
-        60000
+        60000,
   );
   const conflict = await Appointment.findOne({
     beauticianId: beautician._id,
@@ -185,7 +202,7 @@ r.post("/", async (req, res) => {
   const skipBookingFee = isBookingFee && hasNoFeeSubscription;
   if (skipBookingFee) {
     console.log(
-      "[APPOINTMENT] Beautician has no-fee subscription, skipping booking fee"
+      "[APPOINTMENT] Beautician has no-fee subscription, skipping booking fee",
     );
   }
 
@@ -225,6 +242,7 @@ r.post("/", async (req, res) => {
     end,
     price: variant.price,
     status,
+    ...(locationId ? { locationId } : {}), // Add locationId if provided
     ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
     ...(payment ? { payment } : {}),
   };
@@ -245,8 +263,8 @@ r.post("/", async (req, res) => {
         payment,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const appt = await Appointment.create(appointmentDoc);
@@ -256,7 +274,7 @@ r.post("/", async (req, res) => {
   if (!savedAppt) {
     console.error(
       "[APPOINTMENT] Failed to verify appointment creation:",
-      appt._id
+      appt._id,
     );
     return res.status(500).json({ error: "Failed to create appointment" });
   }
@@ -815,7 +833,7 @@ r.post("/:id/confirm-deposit-payment", async (req, res) => {
       try {
         const stripe = getStripe();
         const session = await stripe.checkout.sessions.retrieve(
-          appt.payment.checkoutSessionId
+          appt.payment.checkoutSessionId,
         );
         if (session.payment_intent) {
           appt.payment.stripe = appt.payment.stripe || {};
@@ -823,7 +841,7 @@ r.post("/:id/confirm-deposit-payment", async (req, res) => {
 
           // Get transfer info if available
           const paymentIntent = await stripe.paymentIntents.retrieve(
-            session.payment_intent
+            session.payment_intent,
           );
           if (paymentIntent.charges?.data?.[0]?.transfer) {
             appt.payment.stripe.transferId =
@@ -833,7 +851,7 @@ r.post("/:id/confirm-deposit-payment", async (req, res) => {
       } catch (stripeErr) {
         console.error(
           "[MANUAL CONFIRM] Failed to retrieve Stripe session:",
-          stripeErr.message
+          stripeErr.message,
         );
       }
     }
@@ -927,7 +945,7 @@ r.post("/:id/cancel", async (req, res) => {
 
       if (outcome.refundAmount > 0 && appt.payment?.provider === "stripe") {
         const key = `cancel:${id}:${new Date(
-          appt.updatedAt || appt.createdAt || Date.now()
+          appt.updatedAt || appt.createdAt || Date.now(),
         ).getTime()}`;
         const ref = appt.payment?.stripe || {};
         try {
@@ -980,7 +998,7 @@ r.post("/:id/cancel", async (req, res) => {
     const updated = await Appointment.findOneAndUpdate(
       { _id: id, status: { $in: ["confirmed", "reserved_unpaid"] } },
       update,
-      { new: true }
+      { new: true },
     ).lean();
     if (!updated) {
       const cur = await Appointment.findById(id).lean();
@@ -1092,18 +1110,55 @@ r.patch("/:id", async (req, res) => {
       return res.status(404).json({ error: "Appointment not found" });
     }
 
-    // Check if time slot is available for the new time/beautician
-    if (start && beauticianId) {
-      const appointmentStart = new Date(start);
-      const appointmentEnd = end
-        ? new Date(end)
-        : new Date(appointmentStart.getTime() + 60 * 60000); // default 1 hour if no end
+    const requestedStart = start ? new Date(start) : null;
+    const requestedEnd = end ? new Date(end) : null;
 
+    if (requestedStart && Number.isNaN(requestedStart.getTime())) {
+      return res.status(400).json({ error: "Invalid start date/time" });
+    }
+    if (requestedEnd && Number.isNaN(requestedEnd.getTime())) {
+      return res.status(400).json({ error: "Invalid end date/time" });
+    }
+
+    const currentStart = appointment.start ? new Date(appointment.start) : null;
+    const currentEnd = appointment.end ? new Date(appointment.end) : null;
+    const currentDurationMs =
+      currentStart && currentEnd ? currentEnd.getTime() - currentStart.getTime() : NaN;
+
+    const nextStart = requestedStart || currentStart;
+    const nextEnd =
+      requestedEnd ||
+      (requestedStart
+        ? new Date(
+            requestedStart.getTime() +
+              (Number.isFinite(currentDurationMs) && currentDurationMs > 0
+                ? currentDurationMs
+                : 60 * 60000),
+          )
+        : currentEnd);
+
+    if (!nextStart || Number.isNaN(nextStart.getTime())) {
+      return res.status(400).json({ error: "Appointment start is required" });
+    }
+    if (!nextEnd || Number.isNaN(nextEnd.getTime())) {
+      return res.status(400).json({ error: "Appointment end is required" });
+    }
+    if (nextEnd.getTime() <= nextStart.getTime()) {
+      return res.status(400).json({
+        error: "Appointment end time must be after start time",
+      });
+    }
+
+    const nextBeauticianId = beauticianId || appointment.beauticianId;
+    const shouldCheckConflict = !!nextBeauticianId && (start || end || beauticianId);
+
+    // Check if time slot is available for the updated time/beautician
+    if (shouldCheckConflict) {
       const conflict = await Appointment.findOne({
         _id: { $ne: id }, // exclude current appointment
-        beauticianId: beauticianId,
-        start: { $lt: appointmentEnd },
-        end: { $gt: appointmentStart },
+        beauticianId: nextBeauticianId,
+        start: { $lt: nextEnd },
+        end: { $gt: nextStart },
       }).lean();
 
       if (conflict) {
@@ -1118,8 +1173,10 @@ r.patch("/:id", async (req, res) => {
     if (beauticianId) appointment.beauticianId = beauticianId;
     if (serviceId) appointment.serviceId = serviceId;
     if (variantName) appointment.variantName = variantName;
-    if (start) appointment.start = new Date(start);
-    if (end) appointment.end = new Date(end);
+    if (start || end) {
+      appointment.start = nextStart;
+      appointment.end = nextEnd;
+    }
     if (price !== undefined) appointment.price = price;
 
     await appointment.save();

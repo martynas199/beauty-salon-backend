@@ -44,6 +44,9 @@ const SettingsSchema = new mongoose.Schema(
 
     // Theme Settings
     christmasThemeEnabled: { type: Boolean, default: true },
+
+    // Feature flags
+    multiLocationEnabled: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

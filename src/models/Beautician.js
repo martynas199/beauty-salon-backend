@@ -7,7 +7,7 @@ const DaySchema = new mongoose.Schema(
     end: String,
     breaks: [{ start: String, end: String }],
   },
-  { _id: false }
+  { _id: false },
 );
 
 // New working hours schema for admin system
@@ -16,8 +16,9 @@ const WorkingHoursSchema = new mongoose.Schema(
     dayOfWeek: { type: Number, min: 0, max: 6 }, // 0=Sunday, 6=Saturday
     start: String, // HH:mm format
     end: String, // HH:mm format
+    locationId: { type: mongoose.Schema.Types.ObjectId, ref: "Location" }, // Optional: specific location for these hours
   },
-  { _id: false }
+  { _id: false },
 );
 
 const BeauticianSchema = new mongoose.Schema(
@@ -30,17 +31,21 @@ const BeauticianSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     color: { type: String, default: "#3B82F6" }, // Calendar color
 
+    // Multi-location support: locations where this beautician works
+    locationIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Location" }],
+
     // Admin system working hours (array format) - default weekly schedule
     workingHours: [WorkingHoursSchema],
 
     // Custom schedule for specific dates (overrides default weekly schedule)
-    // Format: { "2025-12-05": [{ start: "09:00", end: "12:00" }], "2025-12-25": [] }
+    // Format: { "2025-12-05": [{ start: "09:00", end: "12:00", locationId: "..." }], "2025-12-25": [] }
     customSchedule: {
       type: Map,
       of: [
         {
           start: String,
           end: String,
+          locationId: { type: mongoose.Schema.Types.ObjectId, ref: "Location" }, // Optional: specific location
           _id: false,
         },
       ],
@@ -142,7 +147,7 @@ const BeauticianSchema = new mongoose.Schema(
       },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Performance indexes for common queries

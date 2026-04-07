@@ -44,7 +44,13 @@ r.get("/", async (req, res, next) => {
       });
     }
 
-    const { active, serviceId, limit = 20, skip = 0 } = queryValidation.data;
+    const {
+      active,
+      serviceId,
+      locationId,
+      limit = 20,
+      skip = 0,
+    } = queryValidation.data;
 
     // Parse pagination params
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -73,6 +79,10 @@ r.get("/", async (req, res, next) => {
       ].filter(Boolean);
 
       query._id = { $in: beauticianIds };
+    }
+
+    if (locationId) {
+      query.locationIds = locationId;
     }
 
     // Get total count for pagination

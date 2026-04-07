@@ -37,6 +37,7 @@ import blogPostsRouter from "./routes/blogPosts.js";
 import featuresRouter from "./routes/features.js";
 import promotionsRouter from "./routes/promotions.js";
 import beauticianRevenueRouter from "./routes/beauticianRevenue.js";
+import locationsRouter from "./routes/locations.js";
 import {
   apiLimiter,
   authLimiter,
@@ -80,7 +81,7 @@ app.use(
     },
     credentials: true, // Allow cookies to be sent
     optionsSuccessStatus: 200,
-  })
+  }),
 );
 
 // Logging
@@ -104,7 +105,7 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 app.use(
   "/api/webhooks",
   express.raw({ type: "application/json" }),
-  webhooksRouter
+  webhooksRouter,
 );
 
 // JSON parser for the rest of the API
@@ -134,6 +135,7 @@ app.use("/api/slots", readLimiter, slotsRouter);
 app.use("/api/salon", readLimiter, salonRouter);
 app.use("/api/hero-sections", readLimiter, heroSectionsRouter);
 app.use("/api/products", readLimiter, productsRouter);
+app.use("/api/locations", readLimiter, locationsRouter);
 app.use("/api/about-us", aboutUsRouter);
 app.use("/api/blog-posts", readLimiter, blogPostsRouter);
 

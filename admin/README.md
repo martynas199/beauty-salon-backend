@@ -579,7 +579,7 @@ Expected output:
 
 ```env
 # Database
-MONGODB_URI=mongodb+srv://...
+MONGODB_URI=<MONGO_URI>
 
 # Authentication
 JWT_SECRET=your-super-secret-key-change-in-production

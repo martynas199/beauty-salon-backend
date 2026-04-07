@@ -294,6 +294,7 @@ r.post("/create-session", async (req, res, next) => {
         startISO,
         client,
         userId,
+        locationId,
       } = req.body || {};
       service = await Service.findById(serviceId).lean();
       if (!service) return res.status(404).json({ error: "Service not found" });
@@ -312,6 +313,21 @@ r.post("/create-session", async (req, res, next) => {
       }
       if (!beautician)
         return res.status(400).json({ error: "No beautician available" });
+
+      if (locationId) {
+        const beauticianLocations = beautician.locationIds || [];
+        const locationIdStr = locationId.toString();
+        const hasLocation = beauticianLocations.some(
+          (loc) => (loc._id || loc).toString() === locationIdStr,
+        );
+
+        if (!hasLocation) {
+          return res.status(400).json({
+            error: "Beautician is not assigned to the selected location",
+          });
+        }
+      }
+
       const start = new Date(startISO);
       const end = new Date(
         start.getTime() +
@@ -337,6 +353,7 @@ r.post("/create-session", async (req, res, next) => {
         price: variant.promoPrice || variant.price,
         status: "reserved_unpaid",
         ...(userId ? { userId } : {}), // Add userId if provided (logged-in users)
+        ...(locationId ? { locationId } : {}), // Add locationId if provided
       });
       appt = appt.toObject();
     }
