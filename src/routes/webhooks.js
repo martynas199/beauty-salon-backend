@@ -598,6 +598,7 @@ r.post("/stripe", async (req, res) => {
                 stripeSubscriptionId: subscription.id,
                 stripePriceId: subscription.items.data[0]?.price.id,
                 status: subscription.status,
+                cancelAtPeriodEnd: !!subscription.cancel_at_period_end,
                 currentPeriodStart: new Date(
                   subscription.current_period_start * 1000
                 ),
@@ -627,6 +628,7 @@ r.post("/stripe", async (req, res) => {
                 stripeSubscriptionId: subscription.id,
                 stripePriceId: subscription.items.data[0]?.price.id,
                 status: subscription.status,
+                cancelAtPeriodEnd: !!subscription.cancel_at_period_end,
                 currentPeriodStart: new Date(
                   subscription.current_period_start * 1000
                 ),
@@ -666,6 +668,7 @@ r.post("/stripe", async (req, res) => {
             if (beautician && beautician.subscription?.noFeeBookings) {
               beautician.subscription.noFeeBookings.enabled = false;
               beautician.subscription.noFeeBookings.status = "canceled";
+              beautician.subscription.noFeeBookings.cancelAtPeriodEnd = false;
               await beautician.save();
               console.log(
                 "[WEBHOOK] Beautician",
@@ -684,6 +687,7 @@ r.post("/stripe", async (req, res) => {
             if (beautician && beautician.subscription?.smsConfirmations) {
               beautician.subscription.smsConfirmations.enabled = false;
               beautician.subscription.smsConfirmations.status = "canceled";
+              beautician.subscription.smsConfirmations.cancelAtPeriodEnd = false;
               await beautician.save();
               console.log(
                 "[WEBHOOK] Beautician",

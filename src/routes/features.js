@@ -25,12 +25,16 @@ r.get("/:beauticianId", async (req, res) => {
       noFeeBookings: {
         enabled: beautician.subscription?.noFeeBookings?.enabled || false,
         status: beautician.subscription?.noFeeBookings?.status || "inactive",
+        cancelAtPeriodEnd:
+          beautician.subscription?.noFeeBookings?.cancelAtPeriodEnd || false,
         currentPeriodEnd:
           beautician.subscription?.noFeeBookings?.currentPeriodEnd || null,
       },
       smsConfirmations: {
         enabled: beautician.subscription?.smsConfirmations?.enabled || false,
         status: beautician.subscription?.smsConfirmations?.status || "inactive",
+        cancelAtPeriodEnd:
+          beautician.subscription?.smsConfirmations?.cancelAtPeriodEnd || false,
         currentPeriodEnd:
           beautician.subscription?.smsConfirmations?.currentPeriodEnd || null,
       },
@@ -51,14 +55,31 @@ r.post("/:beauticianId/subscribe-no-fee", async (req, res) => {
       return res.status(404).json({ error: "Beautician not found" });
     }
 
-    // Check if already subscribed
-    if (beautician.subscription?.noFeeBookings?.enabled) {
+    const stripe = getStripe();
+    const noFeeBookings = beautician.subscription?.noFeeBookings;
+
+    // Reactivate existing subscription that is set to cancel at period end
+    if (noFeeBookings?.enabled && noFeeBookings?.stripeSubscriptionId) {
+      if (noFeeBookings.cancelAtPeriodEnd) {
+        await stripe.subscriptions.update(noFeeBookings.stripeSubscriptionId, {
+          cancel_at_period_end: false,
+        });
+
+        beautician.subscription.noFeeBookings.cancelAtPeriodEnd = false;
+        beautician.subscription.noFeeBookings.status = "active";
+        await beautician.save();
+
+        return res.json({
+          ok: true,
+          reactivated: true,
+          message: "Subscription reactivated successfully",
+        });
+      }
+
       return res
         .status(400)
         .json({ error: "Already subscribed to this feature" });
     }
-
-    const stripe = getStripe();
 
     // Create or get Stripe customer
     let customerId = beautician.stripeCustomerId;
@@ -143,7 +164,10 @@ r.post("/:beauticianId/cancel-no-fee", async (req, res) => {
     });
 
     // Update beautician record
-    beautician.subscription.noFeeBookings.status = "canceled";
+    beautician.subscription.noFeeBookings.cancelAtPeriodEnd = true;
+    if (beautician.subscription.noFeeBookings.status === "inactive") {
+      beautician.subscription.noFeeBookings.status = "active";
+    }
     await beautician.save();
 
     res.json({
@@ -172,14 +196,31 @@ r.post("/:beauticianId/subscribe-sms", async (req, res) => {
       return res.status(404).json({ error: "Beautician not found" });
     }
 
-    // Check if already subscribed
-    if (beautician.subscription?.smsConfirmations?.enabled) {
+    const stripe = getStripe();
+    const smsConfirmations = beautician.subscription?.smsConfirmations;
+
+    // Reactivate existing SMS subscription that is set to cancel at period end
+    if (smsConfirmations?.enabled && smsConfirmations?.stripeSubscriptionId) {
+      if (smsConfirmations.cancelAtPeriodEnd) {
+        await stripe.subscriptions.update(smsConfirmations.stripeSubscriptionId, {
+          cancel_at_period_end: false,
+        });
+
+        beautician.subscription.smsConfirmations.cancelAtPeriodEnd = false;
+        beautician.subscription.smsConfirmations.status = "active";
+        await beautician.save();
+
+        return res.json({
+          ok: true,
+          reactivated: true,
+          message: "SMS subscription reactivated successfully",
+        });
+      }
+
       return res
         .status(400)
         .json({ error: "Already subscribed to SMS confirmations" });
     }
-
-    const stripe = getStripe();
 
     // Create or get Stripe customer
     let customerId = beautician.stripeCustomerId;
@@ -271,7 +312,10 @@ r.post("/:beauticianId/cancel-sms", async (req, res) => {
     });
 
     // Update beautician record
-    beautician.subscription.smsConfirmations.status = "canceled";
+    beautician.subscription.smsConfirmations.cancelAtPeriodEnd = true;
+    if (beautician.subscription.smsConfirmations.status === "inactive") {
+      beautician.subscription.smsConfirmations.status = "active";
+    }
     await beautician.save();
 
     res.json({

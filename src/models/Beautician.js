@@ -116,6 +116,7 @@ const BeauticianSchema = new mongoose.Schema(
         enabled: { type: Boolean, default: false },
         stripeSubscriptionId: String,
         stripePriceId: String,
+        cancelAtPeriodEnd: { type: Boolean, default: false },
         status: {
           type: String,
           enum: ["inactive", "active", "past_due", "canceled"],
@@ -128,6 +129,7 @@ const BeauticianSchema = new mongoose.Schema(
         enabled: { type: Boolean, default: false },
         stripeSubscriptionId: String,
         stripePriceId: String,
+        cancelAtPeriodEnd: { type: Boolean, default: false },
         status: {
           type: String,
           enum: [
