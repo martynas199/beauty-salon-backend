@@ -1102,8 +1102,16 @@ r.patch("/:id/status", async (req, res) => {
 r.patch("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { client, beauticianId, serviceId, variantName, start, end, price } =
-      req.body;
+    const {
+      client,
+      beauticianId,
+      locationId,
+      serviceId,
+      variantName,
+      start,
+      end,
+      price,
+    } = req.body;
 
     const appointment = await Appointment.findById(id);
     if (!appointment) {
@@ -1168,9 +1176,30 @@ r.patch("/:id", async (req, res) => {
       }
     }
 
+    const nextLocationId =
+      locationId !== undefined ? locationId : appointment.locationId;
+    if (nextLocationId) {
+      const beauticianForLocation = await Beautician.findById(nextBeauticianId)
+        .select("locationIds")
+        .lean();
+
+      const beauticianLocations = beauticianForLocation?.locationIds || [];
+      const locationIdStr = nextLocationId.toString();
+      const hasLocation = beauticianLocations.some(
+        (loc) => (loc._id || loc).toString() === locationIdStr,
+      );
+
+      if (!hasLocation) {
+        return res.status(400).json({
+          error: "Beautician is not assigned to the selected location",
+        });
+      }
+    }
+
     // Update fields if provided
     if (client) appointment.client = { ...appointment.client, ...client };
     if (beauticianId) appointment.beauticianId = beauticianId;
+    if (locationId !== undefined) appointment.locationId = locationId || undefined;
     if (serviceId) appointment.serviceId = serviceId;
     if (variantName) appointment.variantName = variantName;
     if (start || end) {
@@ -1185,6 +1214,7 @@ r.patch("/:id", async (req, res) => {
     const updated = await Appointment.findById(id)
       .populate({ path: "serviceId", select: "name" })
       .populate({ path: "beauticianId", select: "name" })
+      .populate({ path: "locationId", select: "name address" })
       .lean();
 
     res.json({
