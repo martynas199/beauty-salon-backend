@@ -148,14 +148,13 @@ r.get("/fully-booked", async (req, res) => {
     // PERFORMANCE: Fetch ALL appointments for the month in ONE query instead of per-day
     const monthStartDate = monthStart.toDate();
     const monthEndDate = monthEnd.toDate();
+    // Do not filter appointments by location here:
+    // the same beautician cannot be double-booked across locations.
     const monthAppointmentQuery = {
       beauticianId,
       start: { $gte: monthStartDate, $lt: monthEndDate },
       status: { $ne: "cancelled" },
     };
-    if (locationId) {
-      monthAppointmentQuery.locationId = locationId;
-    }
     const allMonthAppointments = await Appointment.find(monthAppointmentQuery)
       .select("start end status") // Only fetch needed fields
       .lean();
@@ -304,14 +303,13 @@ r.get("/", async (req, res) => {
     
     const dayStart = new Date(date);
     const dayEnd = new Date(new Date(date).getTime() + 86400000);
+    // Do not filter appointments by location:
+    // booking at one location must still respect existing bookings at another location.
     const appointmentQuery = {
       beauticianId: targetId,
       start: { $gte: dayStart, $lt: dayEnd },
       status: { $ne: "cancelled" },
     };
-    if (locationId) {
-      appointmentQuery.locationId = locationId;
-    }
     const appts = await Appointment.find(appointmentQuery)
       .select("start end status")
       .lean();
@@ -338,6 +336,8 @@ r.get("/", async (req, res) => {
 
     const normalizedBeautician = normalizeBeautician(filteredBeautician);
 
+    // Do not filter appointments by location:
+    // booking at one location must still respect existing bookings at another location.
     const appointmentQuery = {
       beauticianId,
       start: {
@@ -346,9 +346,6 @@ r.get("/", async (req, res) => {
       },
       status: { $ne: "cancelled" },
     };
-    if (locationId) {
-      appointmentQuery.locationId = locationId;
-    }
     const appts = await Appointment.find(appointmentQuery)
       .select("start end status")
       .lean();
