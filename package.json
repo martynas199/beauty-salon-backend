@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node scripts/seed.js",
+    "create:body-waxing": "node scripts/createBodyWaxingForJustina.js",
     "test:cancel": "node scripts/tests/cancellation.test.js",
     "test:slots": "node tests/slotPlanner.comprehensive.test.js",
     "test": "node tests/slotPlanner.comprehensive.test.js && node tests/beautician.schema.test.js && node tests/service.schema.test.js && node tests/mailer.confirmation.test.js"
